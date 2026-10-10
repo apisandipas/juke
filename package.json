@@ -1,0 +1,50 @@
+{
+  "name": "juke",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phone-first remote for Navidrome's jukebox mode",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:mock": "concurrently -k -n mock,api,web -c gray,blue,magenta \"tsx scripts/mock-navidrome.ts\" \"NAVIDROME_URL=http://localhost:4599 NAVIDROME_USER=mock NAVIDROME_PASSWORD=mock tsx watch --tsconfig tsconfig.server.json src/server/main.ts\" \"vite\"",
+    "dev:api": "tsx watch --tsconfig tsconfig.server.json --env-file-if-exists=.env src/server/main.ts",
+    "dev:web": "vite",
+    "build": "vite build && vite build -c vite.server.config.ts",
+    "start": "node dist/server/main.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.4",
+    "hono": "^4.13.13"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-query": "^5.104.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "lucide-react": "^1.55.0",
+    "prettier": "^3.9.10",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0",
+    "typescript-eslint": "^8.71.1",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}
