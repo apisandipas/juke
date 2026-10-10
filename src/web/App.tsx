@@ -10,14 +10,13 @@ import { PlaylistsView, PlaylistView } from '@/features/playlists/PlaylistsView'
 import { QueueList } from '@/features/queue/QueueList'
 import { RemoteView } from '@/features/remote/RemoteView'
 import { useJukebox, usePosition } from '@/lib/jukebox'
-import { goBack, href, useRoute, type Route } from '@/lib/router'
+import { goBack, href, usePagePath, useRoute, type Route } from '@/lib/router'
 
 export function App() {
   const route = useRoute()
   const section = sectionOf(route)
   const showMini = section !== 'remote'
   const chrome = useRef<HTMLDivElement>(null)
-  const { current } = useJukebox()
 
   // Publish the bottom chrome's height so toasts and page padding clear it.
   useEffect(() => {
@@ -32,13 +31,14 @@ export function App() {
   }, [])
 
   // Each page starts at the top; the queue sheet sits over the remote.
+  const pagePath = usePagePath()
   useEffect(() => {
-    if (route.name !== 'queue') window.scrollTo(0, 0)
-  }, [route])
+    if (pagePath !== '#/queue') window.scrollTo(0, 0)
+  }, [pagePath])
 
   return (
     <>
-      <Backdrop coverId={current?.coverArt} dim={section !== 'remote'} />
+      <NowPlayingBackdrop dim={section !== 'remote'} />
       <main
         // The queue sheet covers the remote on phones; hide what's under it
         // so the sheet shows the backdrop, not a blurred copy of the page.
@@ -60,6 +60,15 @@ export function App() {
       </div>
     </>
   )
+}
+
+/**
+ * Reads the jukebox itself, so position updates (about once a second)
+ * re-render this backdrop and not the whole app around it.
+ */
+function NowPlayingBackdrop({ dim }: { dim: boolean }) {
+  const { current } = useJukebox()
+  return <Backdrop coverId={current?.coverArt} dim={dim} />
 }
 
 type Section = 'remote' | 'library' | 'playlists'

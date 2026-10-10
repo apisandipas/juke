@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 // Routes live in the hash so the browser back button, reloads and
 // home-screen launches all work without server-side routing.
@@ -51,7 +51,18 @@ function subscribe(onChange: () => void) {
 
 export function useRoute(): Route {
   const hash = useSyncExternalStore(subscribe, () => window.location.hash)
-  return parse(hash)
+  // Same hash, same object, so effects keyed on the route only run when it
+  // actually changes.
+  return useMemo(() => parse(hash), [hash])
+}
+
+/**
+ * The page part of the current hash, without the query. Changes when the
+ * user goes somewhere else, not when a search box rewrites ?q= in place.
+ */
+export function usePagePath(): string {
+  const hash = useSyncExternalStore(subscribe, () => window.location.hash)
+  return hash.split('?')[0] ?? ''
 }
 
 /** Back within the app if there is history, otherwise to a sensible parent. */
