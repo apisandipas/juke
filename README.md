@@ -69,13 +69,13 @@ On NixOS, use the flake:
 
 ```nix
 # flake inputs
-juke.url = "path:/home/bryan/Dev/juke";   # or a git URL
+juke.url = "github:apisandipas/juke";
 
 # configuration
 imports = [ inputs.juke.nixosModules.default ];
 services.juke = {
   enable = true;
-  user = "bryan";                            # a Navidrome admin: jukebox is admin-only
+  user = "bparonto";                         # a Navidrome admin: jukebox is admin-only
   passwordFile = "/run/secrets/juke-navidrome";
   # port = 4534; navidromeUrl = "http://127.0.0.1:4533";
 };

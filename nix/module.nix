@@ -35,7 +35,7 @@ in
 
     user = lib.mkOption {
       type = lib.types.str;
-      example = "bryan";
+      example = "bparonto";
       description = ''
         Navidrome account juke acts as. Jukebox control is admin-only unless
         Navidrome's Jukebox.AdminOnly is false, so this is normally an admin.
