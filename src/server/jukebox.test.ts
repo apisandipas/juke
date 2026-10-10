@@ -135,6 +135,40 @@ describe('Jukebox', () => {
     expect(nd.interruptions).toBe(0)
   })
 
+  it('refuses a move when the track at `from` is not the one the browser saw', async () => {
+    const { nd, jukebox } = await playing(['a', 'b', 'c', 'd'], 0)
+    // The browser saw c at index 2; meanwhile the queue shifted.
+    await expect(jukebox.run({ action: 'move', from: 2, to: 1, expectId: 'b' })).rejects.toThrow(
+      /queue changed/,
+    )
+    expect(nd.items).toEqual(['a', 'b', 'c', 'd'])
+    const state = await jukebox.run({ action: 'move', from: 2, to: 1, expectId: 'c' })
+    expect(state.queue.map((s) => s.id)).toEqual(['a', 'c', 'b', 'd'])
+  })
+
+  it('never publishes a half-rewritten queue while a reorder is running', async () => {
+    const nd = new FakeNavidrome()
+    // Slow removes give concurrent reads a window into the rewrite.
+    const slow = async (endpoint: string, params?: Params) => {
+      if (params?.action === 'remove') await new Promise((r) => setTimeout(r, 5))
+      return nd.call(endpoint, params)
+    }
+    const jukebox = new Jukebox(slow)
+    await jukebox.run({ action: 'playNow', ids: ['a', 'b', 'c', 'd', 'e', 'f'] })
+    const published: string[] = []
+    jukebox.subscribe((s) => published.push(s.queue.map((x) => x.id).join('')))
+
+    const move = jukebox.run({ action: 'move', from: 1, to: 5 })
+    const reads = Array.from({ length: 10 }, (_, i) =>
+      new Promise((r) => setTimeout(r, i * 3)).then(() => jukebox.refresh()),
+    )
+    await Promise.all([move, ...reads])
+
+    expect(published.length).toBeGreaterThan(0)
+    for (const q of published) expect(['abcdef', 'acdefb']).toContain(q)
+    expect(published.at(-1)).toBe('acdefb')
+  })
+
   it('refuses to move tracks at or before the current one', async () => {
     const { jukebox } = await playing(['a', 'b', 'c'], 1)
     await expect(jukebox.run({ action: 'move', from: 0, to: 2 })).rejects.toBeInstanceOf(

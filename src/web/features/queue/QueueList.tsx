@@ -1,7 +1,27 @@
 import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   ArrowDown,
   ArrowUp,
   ChevronDown,
+  GripVertical,
   ListStart,
   MoreHorizontal,
   Play,
@@ -9,7 +29,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Song } from '@shared/types'
 import { useSheet, type SheetAction } from '@/components/ActionSheet'
 import { Cover } from '@/components/Cover'
@@ -61,12 +81,13 @@ export function QueueList() {
         {
           label: 'Play next',
           icon: ListStart,
-          onSelect: () => void send({ action: 'move', from: index, to: first }),
+          onSelect: () => void send({ action: 'move', from: index, to: first, expectId: song.id }),
         },
         {
           label: 'Move up',
           icon: ArrowUp,
-          onSelect: () => void send({ action: 'move', from: index, to: index - 1 }),
+          onSelect: () =>
+            void send({ action: 'move', from: index, to: index - 1, expectId: song.id }),
         },
       )
     }
@@ -74,7 +95,8 @@ export function QueueList() {
       actions.push({
         label: 'Move down',
         icon: ArrowDown,
-        onSelect: () => void send({ action: 'move', from: index, to: index + 1 }),
+        onSelect: () =>
+          void send({ action: 'move', from: index, to: index + 1, expectId: song.id }),
       })
     }
     actions.push({
@@ -142,13 +164,7 @@ export function QueueList() {
             Nothing after this. Add songs from Library or Playlists.
           </p>
         ) : (
-          <ol>
-            {upcoming.map((song, i) => (
-              <li key={`${song.id}-${first + i}`}>
-                <Row song={song} onOpen={() => openActions(song, first + i)} />
-              </li>
-            ))}
-          </ol>
+          <UpcomingList songs={upcoming} first={first} onOpen={openActions} />
         )}
       </section>
 
@@ -178,6 +194,146 @@ export function QueueList() {
       )}
     </div>
   )
+}
+
+/**
+ * Upcoming tracks, reorderable by dragging the grip on each row. The grip is
+ * the only drag target, so a finger on the rest of the row still scrolls.
+ * Keyboard: focus a grip, Space to pick up, arrows to move, Space to drop.
+ */
+function UpcomingList({
+  songs,
+  first,
+  onOpen,
+}: {
+  songs: Song[]
+  /** Queue index of songs[0]. */
+  first: number
+  onOpen: (song: Song, index: number) => void
+}) {
+  const { send } = useJukebox()
+  // The dropped order, shown until Navidrome has caught up, so the row
+  // doesn't snap back for the second the rewrite takes.
+  const [optimistic, setOptimistic] = useState<Song[] | null>(null)
+  const inFlight = useRef(0)
+  const shown = optimistic ?? songs
+  const keys = occurrenceKeys(shown)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  async function onDragEnd({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return
+    const from = keys.indexOf(String(active.id))
+    const to = keys.indexOf(String(over.id))
+    const moved = shown[from]
+    if (from < 0 || to < 0 || !moved) return
+    setOptimistic(arrayMove(shown, from, to))
+    inFlight.current++
+    await send({ action: 'move', from: first + from, to: first + to, expectId: moved.id })
+    // With several drops queued, keep showing the latest until all land.
+    if (--inFlight.current === 0) setOptimistic(null)
+  }
+
+  const title = (id: string | number) => shown[keys.indexOf(String(id))]?.title ?? 'song'
+  const position = (id: string | number) => keys.indexOf(String(id)) + 1
+  const announcements: Announcements = {
+    onDragStart: ({ active }) =>
+      `Picked up ${title(active.id)}, position ${position(active.id)} of ${keys.length}.`,
+    onDragOver: ({ active, over }) =>
+      over ? `${title(active.id)} moved to position ${position(over.id)}.` : undefined,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `${title(active.id)} dropped at position ${position(over.id)}.`
+        : `${title(active.id)} dropped.`,
+    onDragCancel: ({ active }) => `Moving ${title(active.id)} cancelled.`,
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      modifiers={[restrictToVerticalAxis]}
+      onDragEnd={(e) => void onDragEnd(e)}
+      accessibility={{
+        announcements,
+        screenReaderInstructions: {
+          draggable:
+            'To reorder, press Space, then use the arrow keys. Press Space again to drop, or Escape to cancel.',
+        },
+      }}
+    >
+      <SortableContext items={keys} strategy={verticalListSortingStrategy}>
+        <ol>
+          {shown.map((song, i) => (
+            <SortableRow
+              key={keys[i]}
+              id={keys[i]!}
+              song={song}
+              onOpen={() => onOpen(song, first + i)}
+            />
+          ))}
+        </ol>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+function SortableRow({ id, song, onOpen }: { id: string; song: Song; onOpen: () => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={`relative ${isDragging ? 'z-10' : ''}`}
+    >
+      <div
+        className={`flex items-center rounded-lg transition-shadow ${
+          isDragging ? 'bg-raised shadow-xl shadow-black/50 ring-1 ring-line' : ''
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <Row song={song} onOpen={onOpen} />
+        </div>
+        <button
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Reorder ${song.title}`}
+          className={`grid h-12 w-10 shrink-0 touch-none place-items-center rounded-lg text-faint hover:text-text ${
+            isDragging ? 'cursor-grabbing text-text' : 'cursor-grab'
+          }`}
+        >
+          <GripVertical className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+    </li>
+  )
+}
+
+/**
+ * Stable keys for sortable rows: the song id plus which copy of it this is.
+ * Index-based keys would change under the row being dragged; the same song
+ * can be queued twice, so the id alone is not unique.
+ */
+function occurrenceKeys(songs: Song[]): string[] {
+  const seen = new Map<string, number>()
+  return songs.map((s) => {
+    const n = seen.get(s.id) ?? 0
+    seen.set(s.id, n + 1)
+    return `${s.id}#${n}`
+  })
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {

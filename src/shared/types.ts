@@ -77,7 +77,8 @@ export type JukeboxCommand =
   | { action: 'playNext'; ids: string[] }
   | { action: 'addToQueue'; ids: string[] }
   | { action: 'remove'; index: number }
-  | { action: 'move'; from: number; to: number }
+  /** expectId: the id the browser saw at `from`; the move is refused if it no longer matches. */
+  | { action: 'move'; from: number; to: number; expectId?: string }
   | { action: 'clearUpcoming' }
   | { action: 'shuffleUpcoming' }
 

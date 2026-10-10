@@ -16,8 +16,8 @@ phone / laptop ──SSE + JSON──▶ juke (Hono, :4534) ──Subsonic jukeb
 
 - **Remote**: now playing with cover, seek, play/pause, previous/next and volume. Every
   open tab sees the same state, pushed over server-sent events.
-- **Queue**: reorder, play next, remove, shuffle or clear what's upcoming, all without
-  interrupting the current track.
+- **Queue**: drag to reorder (or use the keyboard), play next, remove, shuffle or
+  clear what's upcoming, all without interrupting the current track.
 - **Library**: search, albums (recently added, played, most played, A–Z, random),
   artists, album pages.
 - **Playlists**: Navidrome playlists, played in full, shuffled, or queued.

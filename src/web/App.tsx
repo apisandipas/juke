@@ -10,6 +10,7 @@ import { PlaylistsView, PlaylistView } from '@/features/playlists/PlaylistsView'
 import { QueueList } from '@/features/queue/QueueList'
 import { RemoteView } from '@/features/remote/RemoteView'
 import { useJukebox, usePosition } from '@/lib/jukebox'
+import { WIDE } from '@/lib/media'
 import { goBack, href, usePagePath, useRoute, type Route } from '@/lib/router'
 
 export function App() {
@@ -193,8 +194,7 @@ function MiniPlayer() {
 function QueueSheet() {
   useEffect(() => {
     // Wide screens already show the queue; leave the sheet route.
-    const wide = window.matchMedia('(min-width: 1024px)')
-    if (wide.matches) window.location.replace(href.remote())
+    if (window.matchMedia(WIDE).matches) window.location.replace(href.remote())
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') goBack(href.remote())
     }

@@ -41,9 +41,14 @@ body {
   min-height: 100dvh;
 }
 
-button,
-a {
-  touch-action: manipulation;
+/* In the base layer so utilities can override it: unlayered CSS would beat
+   `touch-none` on the queue's drag grips, and touches there would scroll
+   the page instead of starting a drag. */
+@layer base {
+  button,
+  a {
+    touch-action: manipulation;
+  }
 }
 
 :focus-visible {

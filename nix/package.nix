@@ -25,7 +25,7 @@ buildNpmPackage {
 
   nodejs = nodejs_24;
   # Update with: nix run nixpkgs#prefetch-npm-deps package-lock.json
-  npmDepsHash = "sha256-Zq3Z1hdT41oNsVWYdE9AUPWWnXHkLptsyynmcS/lL28=";
+  npmDepsHash = "sha256-sUL2j4slelCzNfPV4iH2RisLnFu7nHCWCw4XXKZ5Yao=";
 
   nativeBuildInputs = [ makeWrapper ];
 

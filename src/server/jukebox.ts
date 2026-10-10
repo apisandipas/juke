@@ -39,6 +39,10 @@ export class Jukebox {
   private timer: ReturnType<typeof setInterval> | undefined
   private ticks = 0
   private polling = false
+  /** Commands queued or running. Reads in this window can see a half-rewritten queue. */
+  private pending = 0
+  /** Bumped when a command starts, so a read that began before it is dropped. */
+  private generation = 0
 
   constructor(
     private readonly call: SubsonicCall,
@@ -63,11 +67,22 @@ export class Jukebox {
     }
   }
 
-  /** Fetches the full queue and status from Navidrome and broadcasts it. */
+  /**
+   * Fetches the full queue and status from Navidrome and broadcasts it,
+   * unless a command started meanwhile; then the command's own refresh
+   * will publish the settled state.
+   */
   async refresh(): Promise<JukeboxState> {
+    const generation = this.generation
+    await this.fetchAndPublish(() => this.pending === 0 && this.generation === generation)
+    return this.state
+  }
+
+  private async fetchAndPublish(stillFresh: () => boolean): Promise<void> {
     try {
       const payload = await this.call('jukeboxControl', { action: 'get' })
       const list = payload.jukeboxPlaylist as (JukeboxStatus & { entry?: unknown[] }) | undefined
+      if (!stillFresh()) return
       this.publish({
         status: toStatus(list),
         queue: (list?.entry ?? []).map(toSong),
@@ -75,17 +90,22 @@ export class Jukebox {
         error: null,
       })
     } catch (err) {
-      this.publish({ ...this.state, error: message(err) })
+      if (stillFresh()) this.publish({ ...this.state, error: message(err) })
     }
-    return this.state
   }
 
   /** Runs one command, serialized against every other command, then refreshes. */
   run(command: JukeboxCommand): Promise<JukeboxState> {
-    const result = this.lock.then(async () => {
-      await this.execute(command)
-      return this.refresh()
-    })
+    this.pending++
+    this.generation++
+    const result = this.lock
+      .then(async () => {
+        await this.execute(command)
+        // Under the lock, so this is the settled state after the command.
+        await this.fetchAndPublish(() => true)
+        return this.state
+      })
+      .finally(() => this.pending--)
     // Keep the chain alive after a failed command.
     this.lock = result.catch(() => undefined)
     return result
@@ -171,6 +191,12 @@ export class Jukebox {
         const { status, queue } = await this.snapshot()
         assertIndex(cmd.from, queue.length)
         assertIndex(cmd.to, queue.length)
+        // Indexes come from what the browser last saw. If a track ended in
+        // between, they now point one song further along; refuse rather
+        // than move the wrong song.
+        if (cmd.expectId !== undefined && queue[cmd.from]?.id !== cmd.expectId) {
+          throw new CommandError('The queue changed while you were moving that. Try again.', 409)
+        }
         const first = status.currentIndex + 1
         if (cmd.from < first || cmd.to < first) {
           throw new CommandError('Only upcoming tracks can be reordered', 409)
@@ -218,25 +244,30 @@ export class Jukebox {
   }
 
   private async poll(): Promise<void> {
-    if (this.polling) return
+    // A command in flight will publish its own result; a read now could
+    // catch its queue rewrite halfway through.
+    if (this.polling || this.pending > 0) return
     this.polling = true
+    const generation = this.generation
+    const stillFresh = () => this.pending === 0 && this.generation === generation
     try {
       const every = this.opts.fullRefreshEvery ?? 10
       // A changed index means the track advanced; a periodic full refresh
       // catches queue edits made by other Subsonic clients.
       if (this.state.error || this.ticks++ % every === 0) {
-        await this.refresh()
+        await this.fetchAndPublish(stillFresh)
         return
       }
       const payload = await this.call('jukeboxControl', { action: 'status' })
       const status = toStatus(payload.jukeboxStatus as JukeboxStatus | undefined)
+      if (!stillFresh()) return
       if (status.currentIndex !== this.state.status.currentIndex) {
-        await this.refresh()
+        await this.fetchAndPublish(stillFresh)
         return
       }
       this.publish({ ...this.state, status, sampledAt: this.now(), error: null })
     } catch (err) {
-      this.publish({ ...this.state, error: message(err) })
+      if (stillFresh()) this.publish({ ...this.state, error: message(err) })
     } finally {
       this.polling = false
     }

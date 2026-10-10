@@ -12,6 +12,7 @@ import { useRef, useState } from 'react'
 import { Cover } from '@/components/Cover'
 import { clock } from '@/lib/format'
 import { useJukebox, usePosition } from '@/lib/jukebox'
+import { useMediaQuery, WIDE } from '@/lib/media'
 import { href } from '@/lib/router'
 import { QueueList } from '@/features/queue/QueueList'
 import { StatusLine } from '@/features/remote/StatusLine'
@@ -19,6 +20,7 @@ import { Volume } from '@/features/remote/Volume'
 
 export function RemoteView() {
   const { state, current, connection } = useJukebox()
+  const wide = useMediaQuery(WIDE)
   const queue = state?.queue ?? []
   // With a track on screen, keep showing it (the status line flags it as
   // stale). Without one, "nothing queued" would be a guess, so say so.
@@ -67,10 +69,14 @@ export function RemoteView() {
           )}
         </div>
 
-        <aside className="hidden lg:block" aria-label="Queue">
-          <h2 className="mb-2 px-2 text-xl font-semibold">Queue</h2>
-          <QueueList />
-        </aside>
+        {/* Mounted only when shown: on a phone the queue is the sheet, and a
+            second, hidden sortable list would duplicate its controls. */}
+        {wide && (
+          <aside aria-label="Queue">
+            <h2 className="mb-2 px-2 text-xl font-semibold">Queue</h2>
+            <QueueList />
+          </aside>
+        )}
       </div>
     </div>
   )
