@@ -1,3 +1,4 @@
+import { capitalized, useSpeaker } from '@/lib/config'
 import { useJukebox } from '@/lib/jukebox'
 
 /**
@@ -6,6 +7,7 @@ import { useJukebox } from '@/lib/jukebox'
  */
 export function StatusLine() {
   const { state, connection } = useJukebox()
+  const speaker = useSpeaker()
 
   let tone: 'ok' | 'idle' | 'bad' = 'idle'
   let text: string
@@ -19,9 +21,9 @@ export function StatusLine() {
     text = `Can’t reach Navidrome: ${state.error}`
   } else if (state?.status.playing) {
     tone = 'ok'
-    text = 'Playing on Galactus'
+    text = `Playing on ${speaker}`
   } else {
-    text = state?.queue.length ? 'Paused on Galactus' : 'Galactus'
+    text = state?.queue.length ? `Paused on ${speaker}` : capitalized(speaker)
   }
 
   return (

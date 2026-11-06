@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Cover } from '@/components/Cover'
+import { useSpeaker } from '@/lib/config'
 import { clock } from '@/lib/format'
 import { useJukebox, usePosition } from '@/lib/jukebox'
 import { useMediaQuery, WIDE } from '@/lib/media'
@@ -205,6 +206,7 @@ function SeekBar({ duration }: { duration: number }) {
 
 function NothingQueued({ hasQueue }: { hasQueue: boolean }) {
   const { send } = useJukebox()
+  const speaker = useSpeaker()
   return (
     <div className="flex aspect-square w-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-line px-8 text-center">
       {hasQueue ? (
@@ -220,7 +222,7 @@ function NothingQueued({ hasQueue }: { hasQueue: boolean }) {
         </>
       ) : (
         <>
-          <p className="text-lg font-semibold">Nothing queued on Galactus</p>
+          <p className="text-lg font-semibold">Nothing queued on {speaker}</p>
           <p className="text-sm text-muted">Pick an album or playlist to start the jukebox.</p>
           <div className="flex gap-2">
             <a
@@ -249,8 +251,8 @@ function Unreachable({ proxy }: { proxy: boolean }) {
       <p className="text-lg font-semibold">Can’t see the jukebox</p>
       <p className="text-sm text-muted">
         {proxy
-          ? 'The juke server isn’t answering. Is Galactus awake and on the tailnet?'
-          : 'Navidrome on Galactus isn’t answering. It may be restarting, or Galactus is asleep.'}
+          ? 'The juke server isn’t answering. Check that it’s running and this device can reach it.'
+          : 'Navidrome isn’t answering. It may be restarting, or the machine it runs on is asleep.'}
       </p>
       <p className="text-sm text-faint">This page reconnects on its own.</p>
     </div>

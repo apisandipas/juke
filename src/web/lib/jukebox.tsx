@@ -27,7 +27,7 @@ const JukeboxContext = createContext<JukeboxContextValue | null>(null)
 
 /**
  * Re-stamps a state with this device's clock. The server's sampledAt comes
- * from Galactus's clock, and a phone's can be seconds off, which would throw
+ * from the server's clock, and a phone's can be seconds off, which would throw
  * off the interpolated position.
  */
 function received(state: JukeboxState): JukeboxState {
