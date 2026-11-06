@@ -1,0 +1,8 @@
+{
+  "navidromeUrl": "http://localhost:4599",
+  "navidromeUser": "mock",
+  "navidromePassword": "mock",
+  "name": "Living room",
+  "passwordHash": "scrypt$16384$8$1$sdJJ7UQLcxkeOdehT_uNIw$nyBW1mVG0vvHEowVrcoN7r9bsWQyhR5PsuM2j9KAuVs",
+  "sessionSecret": "-CKPI7_nl3i5C9XV4Lp7OVV7EuGKcK97aYqBaGF-yiw"
+}

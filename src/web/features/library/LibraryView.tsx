@@ -6,7 +6,8 @@ import { SongList } from '@/components/SongList'
 import { Empty, ErrorState, Loading } from '@/components/States'
 import { api, type AlbumListType } from '@/lib/api'
 import { href } from '@/lib/router'
-import { AlbumGrid, ArtistRow } from '@/features/library/parts'
+import { useViewMode, type ViewMode } from '@/lib/viewMode'
+import { AlbumGrid, AlbumList, ArtistGrid, ArtistRow, ViewToggle } from '@/features/library/parts'
 
 const SORTS: { type: AlbumListType; label: string }[] = [
   { type: 'newest', label: 'Recently added' },
@@ -22,6 +23,9 @@ export function LibraryView({ tab, urlQuery }: { tab: 'albums' | 'artists'; urlQ
   const [query, setQueryState] = useState(urlQuery)
   const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery)
   const deferred = useDeferredValue(query.trim())
+  // Each tab remembers its own view; the defaults match how they looked before.
+  const [albumView, setAlbumView] = useViewMode('albums', 'grid')
+  const [artistView, setArtistView] = useViewMode('artists', 'list')
 
   // The URL changed from outside (the Library tab, back/forward): follow it.
   if (urlQuery !== prevUrlQuery) {
@@ -69,30 +73,39 @@ export function LibraryView({ tab, urlQuery }: { tab: 'albums' | 'artists'; urlQ
         <SearchResults query={deferred} />
       ) : (
         <>
-          <nav className="mt-4 flex gap-1 border-b border-line" aria-label="Library sections">
-            {(['albums', 'artists'] as const).map((t) => (
-              <a
-                key={t}
-                href={href.library(t)}
-                aria-current={tab === t ? 'page' : undefined}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize ${
-                  tab === t
-                    ? 'border-accent text-text'
-                    : 'border-transparent text-muted hover:text-text'
-                }`}
-              >
-                {t}
-              </a>
-            ))}
-          </nav>
-          {tab === 'albums' ? <Albums /> : <Artists />}
+          <div className="mt-4 flex items-end gap-2 border-b border-line">
+            <nav className="flex gap-1" aria-label="Library sections">
+              {(['albums', 'artists'] as const).map((t) => (
+                <a
+                  key={t}
+                  href={href.library(t)}
+                  aria-current={tab === t ? 'page' : undefined}
+                  className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize ${
+                    tab === t
+                      ? 'border-accent text-text'
+                      : 'border-transparent text-muted hover:text-text'
+                  }`}
+                >
+                  {t}
+                </a>
+              ))}
+            </nav>
+            <div className="mb-1.5 ml-auto">
+              {tab === 'albums' ? (
+                <ViewToggle mode={albumView} onChange={setAlbumView} label="albums" />
+              ) : (
+                <ViewToggle mode={artistView} onChange={setArtistView} label="artists" />
+              )}
+            </div>
+          </div>
+          {tab === 'albums' ? <Albums view={albumView} /> : <Artists view={artistView} />}
         </>
       )}
     </div>
   )
 }
 
-function Albums() {
+function Albums({ view }: { view: ViewMode }) {
   const [sort, setSort] = useState<AlbumListType>('newest')
   const albums = useInfiniteQuery({
     queryKey: ['albums', sort],
@@ -132,7 +145,11 @@ function Albums() {
           </Empty>
         ) : (
           <>
-            <AlbumGrid albums={albums.data.pages.flat()} />
+            {view === 'grid' ? (
+              <AlbumGrid albums={albums.data.pages.flat()} />
+            ) : (
+              <AlbumList albums={albums.data.pages.flat()} />
+            )}
             {albums.hasNextPage && (
               <div className="mt-6 flex justify-center">
                 <button
@@ -161,7 +178,7 @@ function Albums() {
   )
 }
 
-function Artists() {
+function Artists({ view }: { view: ViewMode }) {
   const artists = useQuery({ queryKey: ['artists'], queryFn: api.artists })
   if (artists.isPending) return <Loading label="Loading artists" />
   if (artists.isError)
@@ -178,13 +195,19 @@ function Artists() {
           >
             {group.letter}
           </h3>
-          <ul>
-            {group.artists.map((artist) => (
-              <li key={artist.id}>
-                <ArtistRow artist={artist} />
-              </li>
-            ))}
-          </ul>
+          {view === 'grid' ? (
+            <div className="px-2 pt-2 pb-4">
+              <ArtistGrid artists={group.artists} />
+            </div>
+          ) : (
+            <ul>
+              {group.artists.map((artist) => (
+                <li key={artist.id}>
+                  <ArtistRow artist={artist} />
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       ))}
     </div>
