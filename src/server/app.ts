@@ -25,6 +25,7 @@ import {
 import { checkConnection } from '@server/checks'
 import type { ConfigStore, Settings } from '@server/config'
 import { CommandError, Jukebox } from '@server/jukebox'
+import { PlaylistError, markEditable, playlistRoutes } from '@server/playlists'
 import { SubsonicError, createSubsonicClient, type SubsonicClient } from '@server/subsonic'
 
 const COVER_SIZES = new Set([64, 128, 256, 512, 1024])
@@ -47,6 +48,8 @@ export interface AppDeps {
 interface Live {
   subsonic: SubsonicClient
   jukebox: Jukebox
+  /** The Navidrome account juke signs in as. */
+  user: string
 }
 
 export function createApp(deps: AppDeps) {
@@ -58,7 +61,7 @@ export function createApp(deps: AppDeps) {
 
   const startLive = (settings: Settings): Live => {
     const subsonic = connect(settings)
-    return { subsonic, jukebox: makeJukebox(subsonic) }
+    return { subsonic, jukebox: makeJukebox(subsonic), user: settings.navidromeUser }
   }
   const initial = store.settings()
   let live: Live | null = initial ? startLive(initial) : null
@@ -67,6 +70,7 @@ export function createApp(deps: AppDeps) {
 
   app.onError((err, c) => {
     if (err instanceof CommandError) return c.json({ error: err.message }, err.status)
+    if (err instanceof PlaylistError) return c.json({ error: err.message }, err.status)
     if (err instanceof SubsonicError) return c.json({ error: err.message, code: err.code }, 502)
     console.error(err)
     return c.json({ error: err.message || 'Internal error' }, 500)
@@ -281,6 +285,9 @@ export function createApp(deps: AppDeps) {
     for (const key of ['status', 'version', 'type', 'serverVersion', 'openSubsonic']) {
       delete payload[key]
     }
+    if (endpoint === 'getPlaylists' || endpoint === 'getPlaylist') {
+      markEditable(payload, c.var.live.user)
+    }
     return c.json(payload)
   })
 
@@ -297,6 +304,8 @@ export function createApp(deps: AppDeps) {
       'cache-control': 'private, max-age=86400',
     })
   })
+
+  playlistRoutes(app)
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
 

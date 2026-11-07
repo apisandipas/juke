@@ -45,8 +45,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
-const json = (body: unknown): RequestInit => ({
-  method: 'POST',
+const json = (body: unknown, method = 'POST'): RequestInit => ({
+  method,
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify(body),
 })
@@ -104,6 +104,28 @@ export const api = {
       albums: r.searchResult3.album ?? [],
       songs: r.searchResult3.song ?? [],
     })),
+}
+
+type PlaylistReply = { playlist: Playlist }
+const playlistPath = (id: string) => `/api/playlists/${encodeURIComponent(id)}`
+
+/** Changes to Navidrome playlists. Each answers with the playlist as it now is. */
+export const playlistApi = {
+  create: (name: string, songIds: string[] = []) =>
+    request<PlaylistReply>('/api/playlists', json({ name, songIds })).then((r) => r.playlist),
+  rename: (id: string, name: string) =>
+    request<PlaylistReply>(playlistPath(id), json({ name }, 'PATCH')).then((r) => r.playlist),
+  add: (id: string, songIds: string[]) =>
+    request<PlaylistReply>(playlistPath(id), json({ add: songIds }, 'PATCH')).then(
+      (r) => r.playlist,
+    ),
+  /** Replace the songs; refused if the playlist no longer holds `expect`. */
+  setSongs: (id: string, songIds: string[], expect: string[]) =>
+    request<PlaylistReply>(`${playlistPath(id)}/songs`, json({ songIds, expect }, 'PUT')).then(
+      (r) => r.playlist,
+    ),
+  remove: (id: string) =>
+    request<{ ok: true }>(playlistPath(id), { method: 'DELETE' }).then(() => undefined),
 }
 
 export type CoverSize = 64 | 128 | 256 | 512 | 1024

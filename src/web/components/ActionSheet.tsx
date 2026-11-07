@@ -83,9 +83,10 @@ export function SheetProvider({ children }: { children: ReactNode }) {
                 )}
               </div>
             </div>
-            <ul className="py-1">
-              {content.actions.map(({ label, icon: Icon, onSelect, hint }) => (
-                <li key={label}>
+            <ul className="max-h-[60vh] overflow-y-auto py-1">
+              {content.actions.map(({ label, icon: Icon, onSelect, hint }, i) => (
+                // Labels can repeat (two playlists with one name), so the index is part of the key.
+                <li key={`${i}-${label}`}>
                   <button
                     onClick={() => {
                       close()

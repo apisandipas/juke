@@ -3,6 +3,7 @@ import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/App'
 import { SheetProvider } from '@/components/ActionSheet'
+import { DialogProvider } from '@/components/Dialog'
 import { ErrorState, Loading } from '@/components/States'
 import { SetupView } from '@/features/setup/SetupView'
 import { SignInView } from '@/features/setup/SignInView'
@@ -36,9 +37,11 @@ createRoot(document.getElementById('root')!).render(
         >
           <Gate>
             <JukeboxProvider>
-              <SheetProvider>
-                <App />
-              </SheetProvider>
+              <DialogProvider>
+                <SheetProvider>
+                  <App />
+                </SheetProvider>
+              </DialogProvider>
             </JukeboxProvider>
           </Gate>
         </ConfigProvider>

@@ -1,7 +1,8 @@
-import { Disc3, ListEnd, ListPlus, ListStart, Play, Plus, UserRound } from 'lucide-react'
+import { Disc3, ListEnd, ListMusic, ListPlus, ListStart, Play, Plus, UserRound } from 'lucide-react'
 import type { Song } from '@shared/types'
 import { clock } from '@/lib/format'
 import { useJukebox } from '@/lib/jukebox'
+import { usePlaylistActions } from '@/lib/playlists'
 import { href } from '@/lib/router'
 import { useSheet } from '@/components/ActionSheet'
 import { Cover } from '@/components/Cover'
@@ -43,6 +44,7 @@ export function SongList({
 }) {
   const { send, enqueue, current, state } = useJukebox()
   const openSheet = useSheet()
+  const { addTo } = usePlaylistActions()
   const ids = songs.map((s) => s.id)
   const multiDisc = new Set(songs.map((s) => s.discNumber ?? 1)).size > 1
 
@@ -66,6 +68,11 @@ export function SongList({
       },
       { label: 'Play next', icon: ListPlus, onSelect: () => void enqueue([song.id], 'next') },
       { label: 'Add to queue', icon: ListEnd, onSelect: () => void enqueue([song.id], 'end') },
+      {
+        label: 'Add to playlist',
+        icon: ListMusic,
+        onSelect: () => void addTo([song.id], song.title),
+      },
       ...(song.albumId
         ? [
             {

@@ -22,6 +22,7 @@ import {
   ArrowUp,
   ChevronDown,
   GripVertical,
+  ListMusic,
   ListStart,
   MoreHorizontal,
   Play,
@@ -37,6 +38,7 @@ import { NowPlayingMark } from '@/components/SongList'
 import { Empty } from '@/components/States'
 import { clock, plural, span } from '@/lib/format'
 import { useJukebox } from '@/lib/jukebox'
+import { usePlaylistActions } from '@/lib/playlists'
 
 /**
  * The jukebox queue: what's playing, what's next, and (folded away) what has
@@ -46,6 +48,7 @@ import { useJukebox } from '@/lib/jukebox'
 export function QueueList() {
   const { state, send } = useJukebox()
   const openSheet = useSheet()
+  const { create } = usePlaylistActions()
   const [showHistory, setShowHistory] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -192,8 +195,27 @@ export function QueueList() {
           )}
         </section>
       )}
+
+      <button
+        onClick={() =>
+          void create(
+            queue.map((s) => s.id),
+            queueName(),
+          )
+        }
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-surface py-3 text-sm font-medium hover:bg-raised"
+      >
+        <ListMusic className="h-4 w-4" aria-hidden />
+        Save queue as playlist
+      </button>
     </div>
   )
+}
+
+/** A starting name for a saved queue, such as "Queue, Nov 6". */
+function queueName(): string {
+  const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return `Queue, ${day}`
 }
 
 /**
@@ -327,7 +349,7 @@ function SortableRow({ id, song, onOpen }: { id: string; song: Song; onOpen: () 
  * Index-based keys would change under the row being dragged; the same song
  * can be queued twice, so the id alone is not unique.
  */
-function occurrenceKeys(songs: Song[]): string[] {
+export function occurrenceKeys(songs: Song[]): string[] {
   const seen = new Map<string, number>()
   return songs.map((s) => {
     const n = seen.get(s.id) ?? 0

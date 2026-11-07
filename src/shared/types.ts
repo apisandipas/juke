@@ -44,6 +44,10 @@ export interface Playlist {
   duration?: number
   coverArt?: string
   entry?: Song[]
+  /** Smart playlists, which Navidrome fills from rules. */
+  readonly?: boolean
+  /** Set by juke: owned by juke's Navidrome account and not a smart playlist. */
+  editable?: boolean
 }
 
 export interface JukeboxStatus {
