@@ -45,7 +45,6 @@ export function SongList({
   const { send, enqueue, current, state } = useJukebox()
   const openSheet = useSheet()
   const { addTo } = usePlaylistActions()
-  const ids = songs.map((s) => s.id)
   const multiDisc = new Set(songs.map((s) => s.discNumber ?? 1)).size > 1
 
   function openActions(song: Song, index: number) {
@@ -56,7 +55,7 @@ export function SongList({
               label: 'Play from here',
               icon: Play,
               hint: 'replaces queue',
-              onSelect: () => void send({ action: 'playNow', ids, startIndex: index }),
+              onSelect: () => void send({ action: 'playNow', songs, startIndex: index }),
             },
           ]
         : []),
@@ -64,10 +63,10 @@ export function SongList({
         label: songs.length > 1 ? 'Play only this song' : 'Play now',
         icon: songs.length > 1 ? ListStart : Play,
         hint: 'replaces queue',
-        onSelect: () => void send({ action: 'playNow', ids: [song.id] }),
+        onSelect: () => void send({ action: 'playNow', songs: [song] }),
       },
-      { label: 'Play next', icon: ListPlus, onSelect: () => void enqueue([song.id], 'next') },
-      { label: 'Add to queue', icon: ListEnd, onSelect: () => void enqueue([song.id], 'end') },
+      { label: 'Play next', icon: ListPlus, onSelect: () => void enqueue([song], 'next') },
+      { label: 'Add to queue', icon: ListEnd, onSelect: () => void enqueue([song], 'end') },
       {
         label: 'Add to playlist',
         icon: ListMusic,
@@ -150,7 +149,7 @@ export function SongList({
                 </span>
               </button>
               <button
-                onClick={() => void enqueue([song.id], 'end')}
+                onClick={() => void enqueue([song], 'end')}
                 className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted hover:bg-raised hover:text-text"
                 aria-label={`Add ${song.title} to queue`}
               >
