@@ -92,6 +92,21 @@ export interface JukeConfig {
   name: string
   needsSetup: boolean
   auth: { enabled: boolean; signedIn: boolean }
+  /** Ask is on: the person running juke set an Anthropic API key. */
+  ask: boolean
+}
+
+/** What the Ask box sends. */
+export interface AskRequest {
+  prompt: string
+  /** What's playing, so "more like this" has something to go on. */
+  nowPlaying?: Song
+}
+
+/** Songs picked from the library, each with why. */
+export interface AskResult {
+  title: string
+  picks: { song: Song; reason: string }[]
 }
 
 export type SetupField =

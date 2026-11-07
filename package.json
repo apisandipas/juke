@@ -23,7 +23,10 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
-    "hono": "^4.13.13"
+    "@tanstack/ai": "^1.2.0",
+    "@tanstack/ai-anthropic": "^1.1.1",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@dnd-kit/core": "^6.3.1",

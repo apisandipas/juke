@@ -82,6 +82,7 @@ describe('configured from the environment', () => {
       name: 'the jukebox',
       needsSetup: false,
       auth: { enabled: false, signedIn: true },
+      ask: false,
     })
     expect((await get('/api/state')).status).toBe(200)
   })

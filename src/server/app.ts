@@ -5,6 +5,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
 import {
   LIBRARY_ENDPOINTS,
+  type AskRequest,
   type JukeConfig,
   type JukeboxCommand,
   type LibraryEndpoint,
@@ -22,6 +23,7 @@ import {
   verifyPassword,
   verifySession,
 } from '@server/auth'
+import { AskError, MAX_PROMPT, type Ask } from '@server/ask'
 import { checkConnection } from '@server/checks'
 import type { ConfigStore, Settings } from '@server/config'
 import { CommandError, Jukebox } from '@server/jukebox'
@@ -47,7 +49,12 @@ export interface AppDeps {
   /** Builds the jukebox for a client; tests pass options such as a fake clock. */
   jukebox?: (client: SubsonicClient) => Jukebox
   staticDir?: string
+  /** Ask, when the person running juke set an Anthropic API key. */
+  ask?: Ask | null
 }
+
+/** Asks running at once, across every device. Each one costs API tokens. */
+const MAX_ASKS = 2
 
 interface Live {
   subsonic: SubsonicClient
@@ -75,6 +82,7 @@ export function createApp(deps: AppDeps) {
   app.onError((err, c) => {
     if (err instanceof CommandError) return c.json({ error: err.message }, err.status)
     if (err instanceof PlaylistError) return c.json({ error: err.message }, err.status)
+    if (err instanceof AskError) return c.json({ error: err.message }, err.status)
     if (err instanceof SubsonicError) return c.json({ error: err.message, code: err.code }, 502)
     console.error(err)
     return c.json({ error: err.message || 'Internal error' }, 500)
@@ -106,6 +114,7 @@ export function createApp(deps: AppDeps) {
       name: store.name(),
       needsSetup: live === null,
       auth: { enabled, signedIn: signedInNow ?? signedIn(c) },
+      ask: Boolean(deps.ask),
     }
   }
 
@@ -349,6 +358,37 @@ export function createApp(deps: AppDeps) {
       time: Date.now(),
     })
     return c.json({ ok: true })
+  })
+
+  // Ask: songs from the library for a request in plain words. Off (404)
+  // unless an Anthropic API key is set.
+  let asking = 0
+  app.post('/api/ask', async (c) => {
+    const ask = deps.ask
+    if (!ask) return c.json({ error: 'Ask is off: no Anthropic API key is set' }, 404)
+    const body = await c.req.json<Partial<AskRequest>>().catch(() => null)
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
+    if (!prompt) throw new AskError('Say what you’d like to hear', 400)
+    if (prompt.length > MAX_PROMPT) {
+      throw new AskError(`Keep it to ${MAX_PROMPT} characters or fewer`, 400)
+    }
+    const playing = body?.nowPlaying
+    const nowPlaying =
+      playing && typeof playing.id === 'string' && typeof playing.title === 'string'
+        ? {
+            id: playing.id,
+            title: playing.title.slice(0, 200),
+            artist: playing.artist?.slice(0, 200),
+            album: playing.album?.slice(0, 200),
+          }
+        : undefined
+    if (asking >= MAX_ASKS) throw new AskError('Already picking songs. Try again in a moment.', 429)
+    asking++
+    try {
+      return c.json(await ask(c.var.live.subsonic.call, { prompt, nowPlaying }))
+    } finally {
+      asking--
+    }
   })
 
   playlistRoutes(app)
