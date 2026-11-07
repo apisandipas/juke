@@ -349,7 +349,7 @@ function SortableRow({ id, song, onOpen }: { id: string; song: Song; onOpen: () 
  * Index-based keys would change under the row being dragged; the same song
  * can be queued twice, so the id alone is not unique.
  */
-function occurrenceKeys(songs: Song[]): string[] {
+export function occurrenceKeys(songs: Song[]): string[] {
   const seen = new Map<string, number>()
   return songs.map((s) => {
     const n = seen.get(s.id) ?? 0

@@ -29,6 +29,15 @@ export function usePlaylistActions() {
     [queryClient],
   )
 
+  /** Drop a deleted playlist from the cache, and refresh the list. */
+  const forget = useCallback(
+    (id: string) => {
+      queryClient.removeQueries({ queryKey: ['playlist', id] })
+      void queryClient.invalidateQueries({ queryKey: ['playlists'] })
+    },
+    [queryClient],
+  )
+
   /** Run a write; on failure, show why and resolve to null. */
   const attempt = useCallback(
     async <T>(write: () => Promise<T>): Promise<T | null> => {
@@ -98,5 +107,8 @@ export function usePlaylistActions() {
     [attempt, queryClient, openSheet, create, saved, toast],
   )
 
-  return useMemo(() => ({ addTo, create, saved, attempt }), [addTo, create, saved, attempt])
+  return useMemo(
+    () => ({ addTo, create, saved, forget, attempt }),
+    [addTo, create, saved, forget, attempt],
+  )
 }
