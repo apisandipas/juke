@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:mock": "concurrently -k -n mock,api,web -c gray,blue,magenta \"tsx scripts/mock-navidrome.ts\" \"NAVIDROME_URL=http://localhost:4599 NAVIDROME_USER=mock NAVIDROME_PASSWORD=mock tsx watch --tsconfig tsconfig.server.json src/server/main.ts\" \"vite\"",
+    "dev:setup": "concurrently -k -n mock,api,web -c gray,blue,magenta \"tsx scripts/mock-navidrome.ts\" \"JUKE_DATA_DIR=.setup-data tsx watch --tsconfig tsconfig.server.json src/server/main.ts\" \"vite\"",
     "dev:api": "tsx watch --tsconfig tsconfig.server.json --env-file-if-exists=.env src/server/main.ts",
     "dev:web": "vite",
     "build": "vite build && vite build -c vite.server.config.ts",

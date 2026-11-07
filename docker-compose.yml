@@ -1,0 +1,24 @@
+# juke next to an existing Navidrome. Start it, open http://<host>:4600,
+# and enter the setup code from `docker compose logs juke`.
+#
+# Navidrome needs jukebox mode on (ND_JUKEBOX_ENABLED=true), and plays
+# through the speakers of the machine Navidrome runs on.
+services:
+  juke:
+    image: ghcr.io/apisandipas/juke:latest
+    restart: unless-stopped
+    ports:
+      - '4600:4600'
+    volumes:
+      - juke-data:/data
+    environment:
+      # All optional: anything left out, the setup form asks for.
+      # Values set here can't be changed from the form.
+      # NAVIDROME_URL: http://navidrome:4533
+      # NAVIDROME_USER: admin
+      # NAVIDROME_PASSWORD: change-me
+      # JUKE_NAME: Living room
+      # JUKE_PASSWORD: change-me-too
+
+volumes:
+  juke-data:

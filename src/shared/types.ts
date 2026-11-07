@@ -82,6 +82,41 @@ export type JukeboxCommand =
   | { action: 'clearUpcoming' }
   | { action: 'shuffleUpcoming' }
 
+/** What the web app needs before anything else: is juke set up, and is this device signed in. */
+export interface JukeConfig {
+  /** What the UI calls the speakers, e.g. "Living room" or "the jukebox". */
+  name: string
+  needsSetup: boolean
+  auth: { enabled: boolean; signedIn: boolean }
+}
+
+export type SetupField =
+  'navidromeUrl' | 'navidromeUser' | 'navidromePassword' | 'name' | 'jukePassword'
+
+/** Where a setting's value comes from. Environment variables always win. */
+export type SettingSource = 'env' | 'saved' | 'default' | 'missing'
+
+/** Each field for the setup form. Secrets come back with an empty value and only their source. */
+export type SetupFields = Record<SetupField, { value: string; source: SettingSource; env: string }>
+
+/** What the setup form sends. Empty or omitted fields keep the value juke already has. */
+export interface SetupRequest {
+  code: string
+  navidromeUrl?: string
+  navidromeUser?: string
+  navidromePassword?: string
+  name?: string
+  jukePassword?: string
+}
+
+export interface ConnectionCheck {
+  id: 'reach' | 'signIn' | 'jukebox'
+  label: string
+  ok: boolean
+  /** Why it failed and what to change. Absent when it passed. */
+  detail?: string
+}
+
 /** Read-only Subsonic endpoints the proxy forwards to the browser. */
 export const LIBRARY_ENDPOINTS = [
   'getAlbumList2',

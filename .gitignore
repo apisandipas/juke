@@ -3,4 +3,5 @@ dist
 .env
 result
 result-*
+data
 .setup-data
