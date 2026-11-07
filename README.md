@@ -21,7 +21,7 @@ phone / laptop ──SSE + JSON──▶ juke (Hono, :4600) ──Subsonic jukeb
   clear what's upcoming, all without interrupting the current track.
 - **Library**: search, albums (recently added, played, most played, A–Z, random),
   artists, album pages.
-- **Playlists**: Navidrome playlists, played in full, shuffled, or queued.
+- **Playlists**: Navidrome playlists, played in full, shuffled, or queued. Make new ones, add songs and albums, save the queue, and rename, reorder or delete the playlists juke's account owns.
 
 Tapping a song opens its actions rather than playing it, because "play" replaces the
 whole jukebox queue. The `+` on each row is the one-tap path: add to the end.
