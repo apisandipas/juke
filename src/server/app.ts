@@ -29,6 +29,10 @@ import { PlaylistError, markEditable, playlistRoutes } from '@server/playlists'
 import { SubsonicError, createSubsonicClient, type SubsonicClient } from '@server/subsonic'
 
 const COVER_SIZES = new Set([64, 128, 256, 512, 1024])
+/** Bit rates a device may ask Navidrome to transcode down to; 0 means the original file. */
+const BIT_RATES = new Set([0, 96, 128, 192, 256, 320])
+/** Headers from Navidrome's stream that the browser needs for seeking and buffering. */
+const STREAM_HEADERS = ['content-type', 'content-length', 'content-range', 'accept-ranges']
 export const MIN_PASSWORD = 8
 
 /** Routes that work before setup and without signing in. */
@@ -303,6 +307,48 @@ export function createApp(deps: AppDeps) {
       // trip through Navidrome for every queue row.
       'cache-control': 'private, max-age=86400',
     })
+  })
+
+  // Audio for playing on this device. Range passes through so the browser
+  // can seek; the Navidrome credentials never reach it.
+  app.get('/api/stream/:id', async (c) => {
+    const rate = Number(c.req.query('maxBitRate') ?? 0)
+    const range = c.req.header('range')
+    const res = await c.var.live.subsonic.fetch(
+      'stream',
+      { id: c.req.param('id'), maxBitRate: BIT_RATES.has(rate) && rate > 0 ? rate : undefined },
+      { stream: true, signal: c.req.raw.signal, headers: range ? { range } : undefined },
+    )
+    const type = res.headers.get('content-type') ?? ''
+    // Subsonic reports errors (a missing song, say) as a JSON or XML body with status 200.
+    if (!res.ok && res.status !== 416) {
+      await res.body?.cancel()
+      return c.json({ error: `Navidrome returned HTTP ${res.status} for that song` }, 502)
+    }
+    if (/json|xml/.test(type)) {
+      await res.body?.cancel()
+      return c.json({ error: 'Navidrome couldn’t stream that song' }, 502)
+    }
+    const headers = new Headers({ 'cache-control': 'private, no-cache' })
+    for (const name of STREAM_HEADERS) {
+      const value = res.headers.get(name)
+      if (value) headers.set(name, value)
+    }
+    return new Response(res.body, { status: res.status, headers })
+  })
+
+  // Play counts for songs played on a device. submission false is "now playing".
+  app.post('/api/scrobble', async (c) => {
+    const body = await c.req.json<{ id?: unknown; submission?: unknown }>().catch(() => null)
+    if (!body || typeof body.id !== 'string' || !body.id) {
+      return c.json({ error: 'Expected a song id' }, 400)
+    }
+    await c.var.live.subsonic.call('scrobble', {
+      id: body.id,
+      submission: body.submission !== false,
+      time: Date.now(),
+    })
+    return c.json({ ok: true })
   })
 
   playlistRoutes(app)
