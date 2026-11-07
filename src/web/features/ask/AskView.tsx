@@ -1,5 +1,5 @@
-import { ListEnd, ListMusic, LoaderCircle, Play, Shuffle, Sparkles } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { Check, ListEnd, ListMusic, LoaderCircle, Play, Shuffle, Sparkles, X } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AskResult } from '@shared/types'
 import { PageHeader } from '@/components/PageHeader'
 import { SongList } from '@/components/SongList'
@@ -31,15 +31,22 @@ export function AskView() {
   const [result, setResult] = useState<AskResult | null>(last?.result ?? null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [steps, setSteps] = useState<string[]>([])
+  const input = useRef<HTMLTextAreaElement>(null)
 
   async function submit(e?: FormEvent) {
     e?.preventDefault()
     const text = prompt.trim()
     if (!text || busy) return
+    // Drop the keyboard, so the progress below is in view on a phone.
+    input.current?.blur()
     setBusy(true)
     setError(null)
+    setSteps([])
     try {
-      const answer = await askForMusic({ prompt: text, nowPlaying: current })
+      const answer = await askForMusic({ prompt: text, nowPlaying: current }, (step) =>
+        setSteps((all) => [...all, step]),
+      )
       last = { prompt: text, result: answer }
       setResult(answer)
     } catch (err) {
@@ -47,6 +54,12 @@ export function AskView() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function clearResult() {
+    last = null
+    setResult(null)
+    setError(null)
   }
 
   const songs = result?.picks.map((p) => p.song) ?? []
@@ -59,23 +72,40 @@ export function AskView() {
         <label htmlFor="ask-prompt" className="sr-only">
           What would you like to hear?
         </label>
-        <textarea
-          id="ask-prompt"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter asks; Shift+Enter is a new line.
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void submit()
-            }
-          }}
-          maxLength={MAX_PROMPT}
-          rows={3}
-          placeholder="What would you like to hear?"
-          enterKeyHint="send"
-          className="w-full resize-none rounded-xl bg-surface px-4 py-3 outline-none placeholder:text-faint focus:ring-2 focus:ring-accent"
-        />
+        <div className="relative">
+          <textarea
+            ref={input}
+            id="ask-prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter asks; Shift+Enter is a new line.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void submit()
+              }
+            }}
+            maxLength={MAX_PROMPT}
+            rows={3}
+            placeholder="What would you like to hear?"
+            enterKeyHint="send"
+            readOnly={busy}
+            className="w-full resize-none rounded-xl bg-surface py-3 pr-11 pl-4 outline-none placeholder:text-faint focus:ring-2 focus:ring-accent"
+          />
+          {prompt && !busy && (
+            <button
+              type="button"
+              onClick={() => {
+                setPrompt('')
+                input.current?.focus()
+              }}
+              className="absolute top-2 right-2 grid h-8 w-8 place-items-center rounded-full text-faint hover:bg-raised hover:text-text"
+              aria-label="Clear the request"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          )}
+        </div>
         <div className="mt-2 flex items-center gap-2">
           <p className="flex-1 text-xs text-faint">Picks come only from your library.</p>
           <button
@@ -111,11 +141,7 @@ export function AskView() {
         </div>
       )}
 
-      {busy && (
-        <p className="mt-10 text-center text-sm text-muted" role="status">
-          Looking through your library. This can take half a minute.
-        </p>
-      )}
+      {busy && <Progress steps={steps} />}
 
       {error && !busy && (
         <p className="mt-6 rounded-xl bg-surface px-4 py-3 text-sm text-danger" role="alert">
@@ -125,7 +151,16 @@ export function AskView() {
 
       {result && !busy && (
         <section className="mt-8" aria-label="Picks">
-          <h2 className="px-1 text-xl font-semibold text-balance">{result.title}</h2>
+          <div className="flex items-start gap-2 px-1">
+            <h2 className="min-w-0 flex-1 text-xl font-semibold text-balance">{result.title}</h2>
+            <button
+              onClick={clearResult}
+              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-sm text-muted hover:bg-raised hover:text-text"
+            >
+              <X className="h-4 w-4" aria-hidden />
+              Clear
+            </button>
+          </div>
           {songs.length === 0 ? (
             <p className="mt-2 px-1 text-sm text-muted">
               Nothing in the library fits that. Try asking another way.
@@ -173,6 +208,56 @@ export function AskView() {
           )}
         </section>
       )}
+    </div>
+  )
+}
+
+/**
+ * What Ask is doing while it works: a running clock, and each step it has
+ * taken, the latest one still spinning.
+ */
+function Progress({ steps }: { steps: string[] }) {
+  const panel = useRef<HTMLDivElement>(null)
+  const [started] = useState(() => Date.now())
+  const [now, setNow] = useState(started)
+
+  useEffect(() => {
+    panel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const seconds = Math.floor((now - started) / 1000)
+  const shown = steps.length ? steps.slice(-6) : ['Reading your request']
+
+  return (
+    <div ref={panel} className="mt-6 rounded-xl bg-surface p-4" role="status" aria-live="polite">
+      <div className="flex items-center gap-2">
+        <LoaderCircle className="h-4 w-4 animate-spin text-accent" aria-hidden />
+        <p className="flex-1 font-medium">Picking from your library…</p>
+        <span className="text-sm text-faint tabular-nums">{seconds}s</span>
+      </div>
+      <ol className="mt-3 space-y-1.5 text-sm">
+        {shown.map((step, i) => {
+          const latest = i === shown.length - 1
+          return (
+            <li
+              key={`${i}-${step}`}
+              className={`flex items-center gap-2 ${latest ? 'text-text' : 'text-faint'}`}
+            >
+              {latest ? (
+                <span
+                  className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+                  aria-hidden
+                />
+              ) : (
+                <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              )}
+              <span className="truncate">{step}</span>
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }

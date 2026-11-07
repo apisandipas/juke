@@ -2,13 +2,20 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { AskRequest, JukeConfig, Song } from '@shared/types'
+import type { AskEvent, AskRequest, JukeConfig, Song } from '@shared/types'
 import { createApp } from '@server/app'
-import { keepKnown, libraryTools, type Ask } from '@server/ask'
+import { AskError, keepKnown, libraryTools, type Ask } from '@server/ask'
 import { ConfigStore } from '@server/config'
 import type { SubsonicCall, SubsonicClient } from '@server/subsonic'
 
 const song = (id: string): Song => ({ id, title: `Song ${id}`, artist: 'Artist' })
+
+/** The streamed answer, one event per line. */
+const events = async (res: Response) =>
+  (await res.text())
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as AskEvent)
 
 function setup(ask?: Ask | null) {
   const call: SubsonicCall = async () => ({})
@@ -37,8 +44,9 @@ describe('Ask', () => {
 
   it('passes the prompt and what is playing to the model, and returns its picks', async () => {
     const seen: AskRequest[] = []
-    const ask: Ask = async (_call, request) => {
+    const ask: Ask = async (_call, request, step) => {
       seen.push(request)
+      step?.('Looking at genres')
       return { title: 'Rainy Sunday', picks: [{ song: song('1'), reason: 'Slow and quiet' }] }
     }
     const { app, post } = setup(ask)
@@ -47,9 +55,11 @@ describe('Ask', () => {
 
     const res = await post({ prompt: '  rainy sunday  ', nowPlaying: { ...song('9'), extra: 1 } })
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({
-      title: 'Rainy Sunday',
-      picks: [{ reason: 'Slow and quiet' }],
+    expect(res.headers.get('content-type')).toMatch(/ndjson/)
+    const [first, last] = await events(res)
+    expect(first).toEqual({ step: 'Looking at genres' })
+    expect(last).toMatchObject({
+      result: { title: 'Rainy Sunday', picks: [{ reason: 'Slow and quiet' }] },
     })
     expect(seen[0]).toEqual({
       prompt: 'rainy sunday',
@@ -74,8 +84,19 @@ describe('Ask', () => {
     const second = post({ prompt: 'b' })
     expect((await post({ prompt: 'c' })).status).toBe(429)
     release()
-    expect((await first).status).toBe(200)
-    expect((await second).status).toBe(200)
+    expect(await events(await first)).toEqual([{ result: { title: '', picks: [] } }])
+    expect(await events(await second)).toHaveLength(1)
+    // Both finished, so a third may run now.
+    expect((await post({ prompt: 'd' })).status).toBe(200)
+  })
+
+  it('ends the stream with a readable error when Ask fails', async () => {
+    const { post } = setup(async () => {
+      throw new AskError('That took too long. Try again.')
+    })
+    expect(await events(await post({ prompt: 'a' }))).toEqual([
+      { error: 'That took too long. Try again.' },
+    ])
   })
 })
 

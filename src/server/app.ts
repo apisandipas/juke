@@ -2,9 +2,10 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import { streamSSE } from 'hono/streaming'
+import { stream, streamSSE } from 'hono/streaming'
 import {
   LIBRARY_ENDPOINTS,
+  type AskEvent,
   type AskRequest,
   type JukeConfig,
   type JukeboxCommand,
@@ -384,11 +385,25 @@ export function createApp(deps: AppDeps) {
         : undefined
     if (asking >= MAX_ASKS) throw new AskError('Already picking songs. Try again in a moment.', 429)
     asking++
-    try {
-      return c.json(await ask(c.var.live.subsonic.call, { prompt, nowPlaying }))
-    } finally {
-      asking--
-    }
+    // One JSON object per line: a { step } for each thing Ask looks at, so
+    // the phone can show progress, then { result } or { error }.
+    c.header('content-type', 'application/x-ndjson; charset=utf-8')
+    c.header('cache-control', 'no-cache')
+    c.header('x-accel-buffering', 'no')
+    const { call } = c.var.live.subsonic
+    return stream(c, async (out) => {
+      const send = (line: AskEvent) => out.write(`${JSON.stringify(line)}\n`).catch(() => {})
+      try {
+        const result = await ask(call, { prompt, nowPlaying }, (step) => void send({ step }))
+        await send({ result })
+      } catch (err) {
+        const known = err instanceof AskError ? err : null
+        if (!known) console.error('juke: ask failed:', err)
+        await send({ error: known?.message ?? 'Ask failed. Try again.' })
+      } finally {
+        asking--
+      }
+    })
   })
 
   playlistRoutes(app)

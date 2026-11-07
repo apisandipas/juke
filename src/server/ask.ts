@@ -20,8 +20,11 @@ export const MAX_PICKS = 40
 /** Model turns before it must answer, so one ask can't run up a bill. */
 const MAX_TURNS = 8
 
+/** A short line saying what Ask is doing now, for the person waiting. */
+export type AskStep = (text: string) => void
+
 /** Turns a request into picks from the library. Swapped for a fake in tests. */
-export type Ask = (call: SubsonicCall, request: AskRequest) => Promise<AskResult>
+export type Ask = (call: SubsonicCall, request: AskRequest, step?: AskStep) => Promise<AskResult>
 
 export class AskError extends Error {
   constructor(
@@ -52,6 +55,7 @@ How to choose:
 - Genre and year tags are the best signals the library has. Check the genre list early, and use search when the request names artists, albums or songs.
 - Mix artists unless the request asks for one. Avoid two songs from the same album in a row.
 - Order the songs so they flow as a set.
+- Someone is waiting with the app open. Make independent tool calls together in one turn, and stop looking once you have enough to choose from.
 - If the library has nothing that fits, return no picks and say why in the title.
 
 Each pick gets a short reason, under 15 words, about why it fits this request. The title names the set in a few words.`
@@ -105,7 +109,11 @@ const briefAlbum = (a: AlbumLike) => ({
  * The read-only library tools the model may call. Every song a tool returns
  * is recorded in `seen`, which is the only place picks can come from.
  */
-export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
+export function libraryTools(
+  call: SubsonicCall,
+  seen: Map<string, Song>,
+  step: AskStep = () => {},
+) {
   const songs = (list: unknown) => {
     const out = (Array.isArray(list) ? list : []) as Song[]
     for (const s of out) seen.set(s.id, s)
@@ -120,6 +128,7 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
         'Search artists, albums and songs by name. Use for requests that name an artist, album or song.',
       inputSchema: z.object({ query: z.string().min(1) }),
     }).server(async ({ query }) => {
+      step(`Searching for “${query}”`)
       const r = await call('search3', { query, artistCount: 5, albumCount: 10, songCount: 25 })
       const found = (r.searchResult3 ?? {}) as {
         artist?: { id: string; name: string; albumCount?: number }[]
@@ -141,6 +150,7 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
       description: 'Every genre tag in the library, with how many songs and albums carry it.',
       inputSchema: z.object({}),
     }).server(async () => {
+      step('Looking at genres')
       const r = await call('getGenres')
       const genres = ((r.genres as { genre?: unknown[] } | undefined)?.genre ?? []) as {
         value: string
@@ -162,6 +172,9 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
         count: count.optional(),
       }),
     }).server(async ({ genre, fromYear, toYear, count: size }) => {
+      const years =
+        fromYear && toYear ? ` from ${fromYear}–${toYear}` : fromYear ? ` from ${fromYear} on` : ''
+      step(`Picking random ${genre ? `${genre} ` : ''}songs${years}`)
       const r = await call('getRandomSongs', { genre, fromYear, toYear, size: size ?? 30 })
       return songs((r.randomSongs as { song?: unknown } | undefined)?.song)
     }),
@@ -174,6 +187,7 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
         offset: z.number().int().min(0).optional(),
       }),
     }).server(async ({ genre, count: size, offset }) => {
+      step(`Browsing ${genre}`)
       const r = await call('getSongsByGenre', { genre, count: size ?? 30, offset: offset ?? 0 })
       return songs((r.songsByGenre as { song?: unknown } | undefined)?.song)
     }),
@@ -186,6 +200,15 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
         count: count.optional(),
       }),
     }).server(async ({ order, count: size }) => {
+      const what = {
+        frequent: 'most played',
+        recent: 'recently played',
+        newest: 'newest',
+        starred: 'starred',
+        highest: 'highest rated',
+        random: 'random',
+      }[order]
+      step(`Checking ${what} albums`)
       const r = await call('getAlbumList2', { type: order, size: size ?? 20 })
       const albums = ((r.albumList2 as { album?: unknown[] } | undefined)?.album ??
         []) as AlbumLike[]
@@ -199,6 +222,7 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
       const r = await call('getAlbum', { id })
       const album = r.album as (AlbumLike & { song?: unknown }) | undefined
       if (!album) return { error: 'No such album' }
+      step(`Looking at ${album.name}`)
       return { ...briefAlbum(album), songs: songs(album.song) }
     }),
     toolDefinition({
@@ -209,6 +233,7 @@ export function libraryTools(call: SubsonicCall, seen: Map<string, Song>) {
       const r = await call('getArtist', { id })
       const artist = r.artist as { name: string; album?: AlbumLike[] } | undefined
       if (!artist) return { error: 'No such artist' }
+      step(`Looking at ${artist.name}`)
       return { name: artist.name, albums: (artist.album ?? []).map(briefAlbum) }
     }),
   ]
@@ -238,7 +263,7 @@ export function keepKnown(
 export function createAsk(opts: { apiKey: string; model?: string }): Ask {
   const adapter = createAnthropicChat(askModel(opts.model), opts.apiKey)
 
-  return async (call, request) => {
+  return async (call, request, step = () => {}) => {
     const seen = new Map<string, Song>()
     const playing = request.nowPlaying
     const context = playing
@@ -262,7 +287,7 @@ export function createAsk(opts: { apiKey: string; model?: string }): Ask {
         ]),
         threadId: `ask:${Date.now()}`,
         systemPrompts: [SYSTEM],
-        tools: libraryTools(call, seen),
+        tools: libraryTools(call, seen, step),
         messages: [{ role: 'user', content: `${request.prompt}${context}` }],
         outputSchema: PickSchema,
       })

@@ -103,6 +103,9 @@ export interface AskRequest {
   nowPlaying?: Song
 }
 
+/** One line of /api/ask's streamed answer: progress, then the result or an error. */
+export type AskEvent = { step: string } | { result: AskResult } | { error: string }
+
 /** Songs picked from the library, each with why. */
 export interface AskResult {
   title: string

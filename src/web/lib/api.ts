@@ -1,5 +1,6 @@
 import type {
   Album,
+  AskEvent,
   AskRequest,
   AskResult,
   Artist,
@@ -108,8 +109,42 @@ export const api = {
     })),
 }
 
-export function askForMusic(body: AskRequest): Promise<AskResult> {
-  return request<AskResult>('/api/ask', json(body))
+/**
+ * Asks for songs. The answer streams one JSON object per line: each step Ask
+ * takes (passed to onStep as it happens), then the result or an error.
+ */
+export async function askForMusic(
+  body: AskRequest,
+  onStep: (step: string) => void,
+): Promise<AskResult> {
+  let res: Response
+  try {
+    res = await fetch('/api/ask', json(body))
+  } catch {
+    throw new ApiError('Juke server is unreachable', 0)
+  }
+  if (!res.ok || !res.body) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>
+    if (err.auth === true || err.setup === true) window.dispatchEvent(new Event(GATE_EVENT))
+    throw new ApiError(err.error ?? `Request failed (${res.status})`, res.status, err)
+  }
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffered = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (value) buffered += value
+    const lines = buffered.split('\n')
+    buffered = done ? '' : (lines.pop() ?? '')
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const event = JSON.parse(line) as AskEvent
+      if ('step' in event) onStep(event.step)
+      else if ('result' in event) return event.result
+      else throw new ApiError(event.error, 502)
+    }
+    if (done) throw new ApiError('Ask stopped before answering. Try again.', 502)
+  }
 }
 
 type PlaylistReply = { playlist: Playlist }
