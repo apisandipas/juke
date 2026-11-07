@@ -136,4 +136,40 @@ describe('picks', () => {
     await run('get_album', { id: 'al' })
     expect([...seen.keys()]).toEqual(['r1', 'r2', 't1'])
   })
+
+  it("lists artists, and gets an artist's songs from their albums in one call", async () => {
+    const call: SubsonicCall = async (endpoint, params = {}) => {
+      if (endpoint === 'getArtists') {
+        return {
+          artists: {
+            index: [
+              { name: 'M', artist: [{ id: 'ar1', name: 'Magdalena Bay', albumCount: 2 }] },
+              { name: 'O', artist: [{ id: 'ar2', name: 'Olivia Rodrigo', albumCount: 1 }] },
+            ],
+          },
+        }
+      }
+      if (endpoint === 'getArtist') {
+        return { artist: { name: 'Magdalena Bay', album: [{ id: 'a1' }, { id: 'a2' }] } }
+      }
+      if (endpoint === 'getAlbum') {
+        return {
+          album: { id: params.id, name: `Album ${params.id}`, song: [song(`${params.id}-1`)] },
+        }
+      }
+      return {}
+    }
+    const seen = new Map<string, Song>()
+    const steps: string[] = []
+    const tools = libraryTools(call, seen, (s) => steps.push(s))
+    const run = (name: string, input: object) =>
+      tools.find((t) => t.name === name)!.execute!(input as never) as Promise<unknown>
+    expect(await run('list_artists', {})).toMatchObject({
+      total: 2,
+      artists: [{ name: 'Magdalena Bay' }, { name: 'Olivia Rodrigo' }],
+    })
+    await run('artist_songs', { id: 'ar1' })
+    expect([...seen.keys()]).toEqual(['a1-1', 'a2-1'])
+    expect(steps).toEqual(['Looking at artists', 'Listening through Magdalena Bay'])
+  })
 })

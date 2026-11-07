@@ -15,6 +15,10 @@ import type { SubsonicCall } from '@server/subsonic'
 export type AskModel = (typeof ANTHROPIC_MODELS)[number]
 export const DEFAULT_ASK_MODEL: AskModel = 'claude-opus-5-5'
 export const MAX_PROMPT = 500
+/** Most artists list_artists returns; enough for most home libraries, and bounded in cost. */
+const MAX_ARTISTS = 1500
+/** Albums artist_songs opens for one artist. */
+const MAX_ARTIST_ALBUMS = 6
 /** Most songs one answer may hold. */
 export const MAX_PICKS = 40
 /** Model turns before it must answer, so one ask can't run up a bill. */
@@ -52,7 +56,8 @@ Use the tools to look through the library, then answer with the songs to play. E
 
 How to choose:
 - Read the request for mood, tempo, era, genre, vocals or not, and length. "An hour" is about 15 songs; with no length given, pick 12 to 20.
-- Genre and year tags are the best signals the library has. Check the genre list early, and use search when the request names artists, albums or songs.
+- Genre tags are often missing or too broad: many libraries tag only some artists, or tag everything "Pop" or "Rock". So start with list_artists alongside list_genres, and use what you know about each artist's style to find the ones that fit; then get their songs with artist_songs. Treat the tags as a hint, not the whole picture.
+- Use search when the request names artists, albums or songs.
 - Mix artists unless the request asks for one. Avoid two songs from the same album in a row.
 - Order the songs so they flow as a set.
 - Someone is waiting with the app open. Make independent tool calls together in one turn, and stop looking once you have enough to choose from.
@@ -143,6 +148,47 @@ export function libraryTools(
         })),
         albums: (found.album ?? []).map(briefAlbum),
         songs: songs(found.song),
+      }
+    }),
+    toolDefinition({
+      name: 'list_artists',
+      description:
+        'Every artist in the library, with an id and album count. Use your own knowledge of these artists to find ones that fit, especially when genre tags are missing.',
+      inputSchema: z.object({}),
+    }).server(async () => {
+      step('Looking at artists')
+      const r = await call('getArtists')
+      const index = ((r.artists as { index?: unknown[] } | undefined)?.index ?? []) as {
+        artist?: { id: string; name: string; albumCount?: number }[]
+      }[]
+      const all = index.flatMap((i) => i.artist ?? [])
+      return {
+        total: all.length,
+        artists: all
+          .slice(0, MAX_ARTISTS)
+          .map((a) => ({ id: a.id, name: a.name, albums: a.albumCount })),
+      }
+    }),
+    toolDefinition({
+      name: 'artist_songs',
+      description: `An artist's songs, from up to ${MAX_ARTIST_ALBUMS} of their albums, in one call.`,
+      inputSchema: z.object({ id: z.string() }),
+    }).server(async ({ id }) => {
+      const r = await call('getArtist', { id })
+      const artist = r.artist as { name: string; album?: AlbumLike[] } | undefined
+      if (!artist) return { error: 'No such artist' }
+      step(`Listening through ${artist.name}`)
+      const albums = await Promise.all(
+        (artist.album ?? [])
+          .slice(0, MAX_ARTIST_ALBUMS)
+          .map((a) => call('getAlbum', { id: a.id }).catch(() => ({}) as Record<string, unknown>)),
+      )
+      return {
+        name: artist.name,
+        albums: albums.flatMap((res) => {
+          const album = res.album as (AlbumLike & { song?: unknown }) | undefined
+          return album ? [{ name: album.name, year: album.year, songs: songs(album.song) }] : []
+        }),
       }
     }),
     toolDefinition({
