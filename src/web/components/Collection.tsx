@@ -26,8 +26,7 @@ export function Collection({
   albumArtist?: string
 }) {
   const { send, enqueue } = useJukebox()
-  const ids = songs.map((s) => s.id)
-  const empty = ids.length === 0
+  const empty = songs.length === 0
 
   return (
     <div className="pb-6">
@@ -47,25 +46,25 @@ export function Collection({
           label="Play"
           primary
           disabled={empty}
-          onClick={() => void send({ action: 'playNow', ids })}
+          onClick={() => void send({ action: 'playNow', songs })}
         />
         <ActionButton
           icon={Shuffle}
           label="Shuffle"
           disabled={empty}
-          onClick={() => void send({ action: 'playNow', ids: shuffled(ids) })}
+          onClick={() => void send({ action: 'playNow', songs: shuffled(songs) })}
         />
         <ActionButton
           icon={ListPlus}
           label="Play next"
           disabled={empty}
-          onClick={() => void enqueue(ids, 'next')}
+          onClick={() => void enqueue(songs, 'next')}
         />
         <ActionButton
           icon={ListEnd}
           label="Add to end"
           disabled={empty}
-          onClick={() => void enqueue(ids, 'end')}
+          onClick={() => void enqueue(songs, 'end')}
         />
       </div>
 

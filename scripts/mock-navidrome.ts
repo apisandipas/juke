@@ -294,6 +294,44 @@ function jukeboxControl(q: URLSearchParams) {
   return { jukeboxStatus: status() }
 }
 
+// ---- Audio ------------------------------------------------------------------
+
+const tones = new Map<string, Uint8Array<ArrayBuffer>>()
+
+/**
+ * A quiet tone as long as the song, as an 8 kHz 8-bit mono WAV (about 0.5 MB a
+ * minute), with a pitch per song so a track change is audible.
+ */
+function toneFor(song: MockSong): Uint8Array<ArrayBuffer> {
+  const cached = tones.get(song.id)
+  if (cached) return cached
+  const rate = 8000
+  const samples = song.duration * rate
+  const out = new Uint8Array(44 + samples)
+  const view = new DataView(out.buffer)
+  const text = (at: number, value: string) =>
+    [...value].forEach((ch, i) => view.setUint8(at + i, ch.charCodeAt(0)))
+  text(0, 'RIFF')
+  view.setUint32(4, 36 + samples, true)
+  text(8, 'WAVEfmt ')
+  view.setUint32(16, 16, true)
+  view.setUint16(20, 1, true) // PCM
+  view.setUint16(22, 1, true) // mono
+  view.setUint32(24, rate, true)
+  view.setUint32(28, rate, true)
+  view.setUint16(32, 1, true)
+  view.setUint16(34, 8, true)
+  text(36, 'data')
+  view.setUint32(40, samples, true)
+  const n = [...song.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+  const pitch = 220 * 2 ** ((n % 12) / 12)
+  for (let i = 0; i < samples; i++) {
+    out[44 + i] = 128 + Math.round(20 * Math.sin((2 * Math.PI * pitch * i) / rate))
+  }
+  tones.set(song.id, out)
+  return out
+}
+
 // ---- HTTP -------------------------------------------------------------------
 
 const app = new Hono()
@@ -441,6 +479,32 @@ app.on(['GET', 'POST'], '/rest/:endpoint', async (c) => {
         const fg = PALETTE[(n + 3) % PALETTE.length]
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${bg}"/><circle cx="${30 + (n % 40)}" cy="${35 + (n % 30)}" r="${18 + (n % 20)}" fill="${fg}" opacity=".85"/><rect x="0" y="${70 + (n % 15)}" width="100" height="4" fill="#fff" opacity=".5"/></svg>`
         return c.body(svg, 200, { 'content-type': 'image/svg+xml' })
+      }
+      case 'scrobble':
+        console.log(
+          `mock: scrobble ${q.get('id')} (${q.get('submission') === 'false' ? 'now playing' : 'played'})`,
+        )
+        return c.json(ok({}))
+      case 'stream': {
+        const song = songs.get(id)
+        if (!song) return c.json(fail(70, 'Song not found'))
+        const wav = toneFor(song)
+        const range = c.req.header('range')?.match(/bytes=(\d+)-(\d*)/)
+        if (!range) {
+          return c.body(wav, 200, {
+            'content-type': 'audio/wav',
+            'content-length': String(wav.length),
+            'accept-ranges': 'bytes',
+          })
+        }
+        const start = Number(range[1])
+        const end = Math.min(wav.length - 1, range[2] ? Number(range[2]) : wav.length - 1)
+        return c.body(wav.subarray(start, end + 1), 206, {
+          'content-type': 'audio/wav',
+          'content-length': String(end - start + 1),
+          'content-range': `bytes ${start}-${end}/${wav.length}`,
+          'accept-ranges': 'bytes',
+        })
       }
       default:
         return c.json(fail(0, `Mock does not implement ${endpoint}`))

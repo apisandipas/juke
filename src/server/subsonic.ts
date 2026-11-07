@@ -19,6 +19,15 @@ export interface CallOptions {
    * Navidrome accepts this (OpenSubsonic formPost).
    */
   post?: boolean
+  /** Extra request headers, such as Range for streams. */
+  headers?: Record<string, string>
+  /**
+   * For long bodies such as audio: the timeout covers only the wait for
+   * headers, not reading the body, and `signal` (the listener going away)
+   * stops the transfer.
+   */
+  stream?: boolean
+  signal?: AbortSignal
 }
 
 /** Calls one Subsonic endpoint and returns the payload inside `subsonic-response`. */
@@ -30,8 +39,8 @@ export type SubsonicCall = (
 
 export interface SubsonicClient {
   call: SubsonicCall
-  /** Raw fetch for binary endpoints such as getCoverArt. */
-  fetch: (endpoint: string, params?: Params) => Promise<Response>
+  /** Raw fetch for binary endpoints such as getCoverArt and stream. */
+  fetch: (endpoint: string, params?: Params, options?: CallOptions) => Promise<Response>
 }
 
 export function createSubsonicClient(opts: {
@@ -74,15 +83,29 @@ export function createSubsonicClient(opts: {
     params?: Params,
     options: CallOptions = {},
   ): Promise<Response> {
-    const signal = AbortSignal.timeout(timeoutMs)
+    // The timeout covers the whole call, except that a stream stops it once
+    // headers arrive (see CallOptions.stream).
+    const timer = new AbortController()
+    const timeout = setTimeout(
+      () => timer.abort(new DOMException('timed out', 'TimeoutError')),
+      timeoutMs,
+    )
+    timeout.unref()
+    const signal = options.signal ? AbortSignal.any([timer.signal, options.signal]) : timer.signal
     try {
       if (options.post) {
         const body = new URLSearchParams()
         append(body, params ?? {})
-        return await fetch(url(endpoint), { method: 'POST', body, signal })
+        return await fetch(url(endpoint), {
+          method: 'POST',
+          body,
+          signal,
+          headers: options.headers,
+        })
       }
-      return await fetch(url(endpoint, params), { signal })
+      return await fetch(url(endpoint, params), { signal, headers: options.headers })
     } catch (err) {
+      if (options.signal?.aborted) throw err
       // undici reports every network failure as "fetch failed"; the useful
       // part (ECONNREFUSED, ENOTFOUND, a timeout) is in the cause.
       // Dual-stack connects wrap per-address failures in an AggregateError.
@@ -94,6 +117,8 @@ export function createSubsonicClient(opts: {
           ? 'timed out'
           : (cause ?? 'network error')
       throw new SubsonicError(`no answer from ${new URL(opts.baseUrl).host} (${why})`, 0)
+    } finally {
+      if (options.stream) clearTimeout(timeout)
     }
   }
 
@@ -110,5 +135,5 @@ export function createSubsonicClient(opts: {
     return payload
   }
 
-  return { call, fetch: (endpoint, params) => rawFetch(endpoint, params) }
+  return { call, fetch: rawFetch }
 }

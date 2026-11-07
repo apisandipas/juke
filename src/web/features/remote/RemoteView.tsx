@@ -20,12 +20,14 @@ import { StatusLine } from '@/features/remote/StatusLine'
 import { Volume } from '@/features/remote/Volume'
 
 export function RemoteView() {
-  const { state, current, connection } = useJukebox()
+  const { state, current, connection, output } = useJukebox()
   const wide = useMediaQuery(WIDE)
   const queue = state?.queue ?? []
   // With a track on screen, keep showing it (the status line flags it as
   // stale). Without one, "nothing queued" would be a guess, so say so.
-  const unreachable = !current && (connection === 'reconnecting' || Boolean(state?.error))
+  // Only the jukebox can be out of reach; this device reports errors in the status line.
+  const unreachable =
+    output === 'jukebox' && !current && (connection === 'reconnecting' || Boolean(state?.error))
   const index = state?.status.currentIndex ?? -1
   const next = queue[index + 1]
   const upcomingCount = Math.max(0, queue.length - index - 1)
@@ -84,7 +86,7 @@ export function RemoteView() {
 }
 
 function NowPlaying() {
-  const { state, current, send } = useJukebox()
+  const { state, current, send, canSetVolume } = useJukebox()
   if (!state || !current) return null
   const { playing, currentIndex } = state.status
   const hasNext = currentIndex + 1 < state.queue.length
@@ -154,7 +156,11 @@ function NowPlaying() {
         </button>
       </div>
 
-      <Volume />
+      {canSetVolume ? (
+        <Volume />
+      ) : (
+        <p className="mt-6 text-center text-xs text-faint">Use the device’s buttons for volume.</p>
+      )}
     </>
   )
 }
@@ -205,8 +211,9 @@ function SeekBar({ duration }: { duration: number }) {
 }
 
 function NothingQueued({ hasQueue }: { hasQueue: boolean }) {
-  const { send } = useJukebox()
-  const speaker = useSpeaker()
+  const { send, output } = useJukebox()
+  const name = useSpeaker()
+  const speaker = output === 'device' ? 'this device' : name
   return (
     <div className="flex aspect-square w-full flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-line px-8 text-center">
       {hasQueue ? (
@@ -223,7 +230,9 @@ function NothingQueued({ hasQueue }: { hasQueue: boolean }) {
       ) : (
         <>
           <p className="text-lg font-semibold">Nothing queued on {speaker}</p>
-          <p className="text-sm text-muted">Pick an album or playlist to start the jukebox.</p>
+          <p className="text-sm text-muted">
+            Pick an album or playlist to start {output === 'device' ? 'playing' : 'the jukebox'}.
+          </p>
           <div className="flex gap-2">
             <a
               href={href.library()}
