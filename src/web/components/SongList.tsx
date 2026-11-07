@@ -34,8 +34,11 @@ export function SongList({
   numbering = 'track',
   showArt = false,
   albumArtist,
+  notes,
 }: {
   songs: Song[]
+  /** A line under each song, by position, e.g. why Ask picked it. */
+  notes?: (string | undefined)[]
   /** 'track' shows the track number, 'index' the row position. */
   numbering?: 'track' | 'index' | 'none'
   showArt?: boolean
@@ -142,6 +145,9 @@ export function SongList({
                         ? [song.artist, song.album].filter(Boolean).join(' · ')
                         : song.artist}
                     </span>
+                  )}
+                  {notes?.[i] && (
+                    <span className="mt-0.5 block text-sm text-faint">{notes[i]}</span>
                   )}
                 </span>
                 <span className="shrink-0 text-sm text-faint tabular-nums">

@@ -1,5 +1,7 @@
 import type {
   Album,
+  AskRequest,
+  AskResult,
   Artist,
   ConnectionCheck,
   JukeConfig,
@@ -104,6 +106,10 @@ export const api = {
       albums: r.searchResult3.album ?? [],
       songs: r.searchResult3.song ?? [],
     })),
+}
+
+export function askForMusic(body: AskRequest): Promise<AskResult> {
+  return request<AskResult>('/api/ask', json(body))
 }
 
 type PlaylistReply = { playlist: Playlist }

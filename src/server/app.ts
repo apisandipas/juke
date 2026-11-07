@@ -396,9 +396,18 @@ export function createApp(deps: AppDeps) {
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
 
   if (deps.staticDir) {
-    app.use('/*', serveStatic({ root: deps.staticDir }))
+    // Built assets have content hashes in their names, so they can be cached
+    // for good. Everything else (index.html above all) is checked on each
+    // load, or a home-screen app on iOS keeps running an old version.
+    const cacheHeaders = (path: string, c: Context) => {
+      c.header(
+        'cache-control',
+        path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      )
+    }
+    app.use('/*', serveStatic({ root: deps.staticDir, onFound: cacheHeaders }))
     // Client-side routes live in the hash, so any other path is the app shell.
-    app.get('/*', serveStatic({ root: deps.staticDir, path: 'index.html' }))
+    app.get('/*', serveStatic({ root: deps.staticDir, path: 'index.html', onFound: cacheHeaders }))
   }
 
   return app
