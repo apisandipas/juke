@@ -1,5 +1,5 @@
 /**
- * A stand-in Navidrome for working on juke without touching Galactus: the
+ * A stand-in Navidrome for working on juke without a real Navidrome: the
  * Subsonic endpoints juke calls, an invented library, and a jukebox that
  * follows Navidrome 0.64's queue semantics and advances in real time.
  * Nothing plays; it only keeps time.
@@ -310,6 +310,8 @@ app.get('/rest/:endpoint', (c) => {
     switch (endpoint) {
       case 'ping':
         return c.json(ok({}))
+      case 'getUser':
+        return c.json(ok({ user: { username: q.get('username') ?? 'mock', adminRole: true } }))
       case 'jukeboxControl':
         return c.json(ok(jukeboxControl(q)))
       case 'getAlbumList2': {

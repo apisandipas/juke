@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { StrictMode } from 'react'
+import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from '@/App'
 import { SheetProvider } from '@/components/ActionSheet'
+import { ErrorState, Loading } from '@/components/States'
+import { SetupView } from '@/features/setup/SetupView'
+import { SignInView } from '@/features/setup/SignInView'
+import { ConfigProvider, useConfig } from '@/lib/config'
 import { JukeboxProvider } from '@/lib/jukebox'
 import { ToastProvider } from '@/lib/toast'
 import '@/styles.css'
@@ -14,15 +18,30 @@ const queryClient = new QueryClient({
   },
 })
 
+/** Setup, then sign-in, then the remote. The jukebox connects only once both are done. */
+function Gate({ children }: { children: ReactNode }) {
+  const { config } = useConfig()
+  if (config.needsSetup) return <SetupView />
+  if (config.auth.enabled && !config.auth.signedIn) return <SignInView />
+  return children
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <JukeboxProvider>
-          <SheetProvider>
-            <App />
-          </SheetProvider>
-        </JukeboxProvider>
+        <ConfigProvider
+          loading={<Loading label="Connecting to juke" />}
+          failed={(error, retry) => <ErrorState error={error} retry={retry} />}
+        >
+          <Gate>
+            <JukeboxProvider>
+              <SheetProvider>
+                <App />
+              </SheetProvider>
+            </JukeboxProvider>
+          </Gate>
+        </ConfigProvider>
       </ToastProvider>
     </QueryClientProvider>
   </StrictMode>,

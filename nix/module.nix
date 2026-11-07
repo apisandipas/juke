@@ -34,20 +34,43 @@ in
     };
 
     user = lib.mkOption {
-      type = lib.types.str;
-      example = "bparonto";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "admin";
       description = ''
         Navidrome account juke acts as. Jukebox control is admin-only unless
         Navidrome's Jukebox.AdminOnly is false, so this is normally an admin.
+        Leave null to enter it in juke's setup form instead.
       '';
     };
 
     passwordFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       example = "/run/secrets/juke-navidrome-password";
       description = ''
         File holding that account's Navidrome password. Read through a
-        systemd credential, so it can stay root-only.
+        systemd credential, so it can stay root-only. Leave null to enter
+        it in juke's setup form instead.
+      '';
+    };
+
+    name = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "Living room";
+      description = ''What juke calls the speakers ("Playing on Living room").'';
+    };
+
+    jukePasswordFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/run/secrets/juke-password";
+      description = ''
+        File holding the password each device enters once to use juke.
+        With this null and the Navidrome login set here, juke has no
+        password and anyone who can reach the port can use it. When juke is
+        set up through its form, the form sets the password instead.
       '';
     };
   };
@@ -63,16 +86,28 @@ in
 
       environment = {
         NAVIDROME_URL = cfg.navidromeUrl;
-        NAVIDROME_USER = cfg.user;
-        NAVIDROME_PASSWORD_FILE = "%d/navidrome-password";
         JUKE_PORT = toString cfg.port;
         JUKE_HOST = "0.0.0.0";
         NODE_ENV = "production";
+      }
+      // lib.optionalAttrs (cfg.user != null) { NAVIDROME_USER = cfg.user; }
+      // lib.optionalAttrs (cfg.passwordFile != null) {
+        NAVIDROME_PASSWORD_FILE = "%d/navidrome-password";
+      }
+      // lib.optionalAttrs (cfg.name != null) { JUKE_NAME = cfg.name; }
+      // lib.optionalAttrs (cfg.jukePasswordFile != null) {
+        JUKE_PASSWORD_FILE = "%d/juke-password";
       };
 
       serviceConfig = {
+        # Settings from the setup form, and the key that signs sign-ins.
+        # juke finds it through STATE_DIRECTORY.
+        StateDirectory = "juke";
+        StateDirectoryMode = "0700";
         ExecStart = lib.getExe cfg.package;
-        LoadCredential = [ "navidrome-password:${cfg.passwordFile}" ];
+        LoadCredential =
+          lib.optional (cfg.passwordFile != null) "navidrome-password:${cfg.passwordFile}"
+          ++ lib.optional (cfg.jukePasswordFile != null) "juke-password:${cfg.jukePasswordFile}";
         Restart = "on-failure";
         RestartSec = 2;
 

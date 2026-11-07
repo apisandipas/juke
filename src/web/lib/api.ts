@@ -1,10 +1,14 @@
 import type {
   Album,
   Artist,
+  ConnectionCheck,
+  JukeConfig,
   JukeboxCommand,
   JukeboxState,
   LibraryEndpoint,
   Playlist,
+  SetupFields,
+  SetupRequest,
   Song,
 } from '@shared/types'
 
@@ -12,11 +16,19 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Extra fields the server sent with the error, such as `field` or `checks`. */
+    readonly body: Record<string, unknown> = {},
   ) {
     super(message)
     this.name = 'ApiError'
   }
 }
+
+/**
+ * Fired when the server says juke needs setting up or this device needs to
+ * sign in, so the app can swap to that screen from wherever the call was.
+ */
+export const GATE_EVENT = 'juke:gate'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
@@ -25,9 +37,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     throw new ApiError('Juke server is unreachable', 0)
   }
-  const body = (await res.json().catch(() => ({}))) as { error?: string }
-  if (!res.ok) throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status)
+  const body = (await res.json().catch(() => ({}))) as { error?: string } & Record<string, unknown>
+  if (!res.ok) {
+    if (body.auth === true || body.setup === true) window.dispatchEvent(new Event(GATE_EVENT))
+    throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status, body)
+  }
   return body as T
+}
+
+const json = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+})
+
+export const session = {
+  config: () => request<JukeConfig>('/api/config'),
+  signIn: (password: string) => request<JukeConfig>('/api/login', json({ password })),
+  signOut: () => request<JukeConfig>('/api/logout', json({})),
+  setupFields: () => request<{ fields: SetupFields; minPassword: number }>('/api/setup'),
+  testSetup: (form: SetupRequest) =>
+    request<{ checks: ConnectionCheck[]; ok: boolean }>('/api/setup/test', json(form)),
+  saveSetup: (form: SetupRequest) => request<JukeConfig>('/api/setup', json(form)),
 }
 
 export function sendCommand(command: JukeboxCommand): Promise<JukeboxState> {
