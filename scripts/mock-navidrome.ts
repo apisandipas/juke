@@ -302,8 +302,14 @@ const fail = (code: number, message: string) => ({
   'subsonic-response': { status: 'failed', version: '1.16.1', error: { code, message } },
 })
 
-app.get('/rest/:endpoint', (c) => {
+app.on(['GET', 'POST'], '/rest/:endpoint', async (c) => {
   const q = new URL(c.req.url).searchParams
+  // Writes arrive as a form body (OpenSubsonic formPost); merge it in.
+  if (c.req.method === 'POST') {
+    for (const [k, v] of new URLSearchParams(await c.req.text())) q.append(k, v)
+  }
+  // Every playlist belongs to whoever is asking, so all of them are editable.
+  const owner = q.get('u') ?? 'mock'
   const endpoint = c.req.param('endpoint').replace(/\.view$/, '')
   const id = q.get('id') ?? ''
   try {
@@ -357,7 +363,7 @@ app.get('/rest/:endpoint', (c) => {
                 id: p.id,
                 name: p.name,
                 comment: p.comment,
-                owner: 'bryan',
+                owner,
                 songCount: p.ids.length,
                 duration: p.ids.reduce((s, i) => s + songs.get(i)!.duration, 0),
                 coverArt: p.ids[0] ? songs.get(p.ids[0])!.coverArt : undefined,
@@ -375,7 +381,7 @@ app.get('/rest/:endpoint', (c) => {
               id: p.id,
               name: p.name,
               comment: p.comment,
-              owner: 'bryan',
+              owner,
               songCount: entry.length,
               duration: entry.reduce((s, x) => s + x.duration, 0),
               coverArt: entry[0]?.coverArt,
@@ -383,6 +389,36 @@ app.get('/rest/:endpoint', (c) => {
             },
           }),
         )
+      }
+      case 'createPlaylist': {
+        const ids = q.getAll('songId').filter((i) => songs.has(i))
+        const existing = playlists.find((x) => x.id === q.get('playlistId'))
+        if (q.get('playlistId') && !existing) return c.json(fail(70, 'Playlist not found'))
+        const p = existing ?? {
+          id: `pl-${Date.now()}`,
+          name: q.get('name') ?? 'New playlist',
+          comment: '',
+          ids: [] as string[],
+        }
+        p.ids = ids
+        if (!existing) playlists.push(p)
+        return c.json(ok({ playlist: { id: p.id, name: p.name, owner, songCount: p.ids.length } }))
+      }
+      case 'updatePlaylist': {
+        const p = playlists.find((x) => x.id === q.get('playlistId'))
+        if (!p) return c.json(fail(70, 'Playlist not found'))
+        const name = q.get('name')
+        if (name !== null) p.name = name
+        const drop = new Set(q.getAll('songIndexToRemove').map(Number))
+        p.ids = p.ids.filter((_, i) => !drop.has(i))
+        p.ids.push(...q.getAll('songIdToAdd').filter((i) => songs.has(i)))
+        return c.json(ok({}))
+      }
+      case 'deletePlaylist': {
+        const at = playlists.findIndex((x) => x.id === id)
+        if (at < 0) return c.json(fail(70, 'Playlist not found'))
+        playlists.splice(at, 1)
+        return c.json(ok({}))
       }
       case 'search3': {
         const term = (q.get('query') ?? '').toLowerCase()
