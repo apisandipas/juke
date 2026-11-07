@@ -73,6 +73,25 @@ in
         set up through its form, the form sets the password instead.
       '';
     };
+
+    anthropicKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/run/secrets/juke-anthropic-key";
+      description = ''
+        File holding an Anthropic API key. Turns on Ask, which picks songs
+        from the library for a request in plain words. Read through a
+        systemd credential, so it can stay root-only. Leave null to keep
+        Ask off.
+      '';
+    };
+
+    anthropicModel = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "claude-sonnet-5-5";
+      description = "Claude model Ask uses. Null means juke's default, Claude Opus 5.5.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -97,7 +116,11 @@ in
       // lib.optionalAttrs (cfg.name != null) { JUKE_NAME = cfg.name; }
       // lib.optionalAttrs (cfg.jukePasswordFile != null) {
         JUKE_PASSWORD_FILE = "%d/juke-password";
-      };
+      }
+      // lib.optionalAttrs (cfg.anthropicKeyFile != null) {
+        ANTHROPIC_API_KEY_FILE = "%d/anthropic-key";
+      }
+      // lib.optionalAttrs (cfg.anthropicModel != null) { ANTHROPIC_MODEL = cfg.anthropicModel; };
 
       serviceConfig = {
         # Settings from the setup form, and the key that signs sign-ins.
@@ -107,7 +130,8 @@ in
         ExecStart = lib.getExe cfg.package;
         LoadCredential =
           lib.optional (cfg.passwordFile != null) "navidrome-password:${cfg.passwordFile}"
-          ++ lib.optional (cfg.jukePasswordFile != null) "juke-password:${cfg.jukePasswordFile}";
+          ++ lib.optional (cfg.jukePasswordFile != null) "juke-password:${cfg.jukePasswordFile}"
+          ++ lib.optional (cfg.anthropicKeyFile != null) "anthropic-key:${cfg.anthropicKeyFile}";
         Restart = "on-failure";
         RestartSec = 2;
 
@@ -123,6 +147,8 @@ in
         RestrictAddressFamilies = [
           "AF_INET"
           "AF_INET6"
+          # Name lookups go through nscd's socket; Ask resolves api.anthropic.com.
+          "AF_UNIX"
         ];
         RestrictNamespaces = true;
         LockPersonality = true;

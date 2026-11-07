@@ -19,6 +19,7 @@ services:
       # NAVIDROME_PASSWORD: change-me
       # JUKE_NAME: Living room
       # JUKE_PASSWORD: change-me-too
+      # ANTHROPIC_API_KEY: sk-ant-...   # turns on Ask
 
 volumes:
   juke-data:

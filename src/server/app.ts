@@ -2,9 +2,11 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import { streamSSE } from 'hono/streaming'
+import { stream, streamSSE } from 'hono/streaming'
 import {
   LIBRARY_ENDPOINTS,
+  type AskEvent,
+  type AskRequest,
   type JukeConfig,
   type JukeboxCommand,
   type LibraryEndpoint,
@@ -22,6 +24,7 @@ import {
   verifyPassword,
   verifySession,
 } from '@server/auth'
+import { AskError, MAX_PROMPT, type Ask } from '@server/ask'
 import { checkConnection } from '@server/checks'
 import type { ConfigStore, Settings } from '@server/config'
 import { CommandError, Jukebox } from '@server/jukebox'
@@ -47,7 +50,12 @@ export interface AppDeps {
   /** Builds the jukebox for a client; tests pass options such as a fake clock. */
   jukebox?: (client: SubsonicClient) => Jukebox
   staticDir?: string
+  /** Ask, when the person running juke set an Anthropic API key. */
+  ask?: Ask | null
 }
+
+/** Asks running at once, across every device. Each one costs API tokens. */
+const MAX_ASKS = 2
 
 interface Live {
   subsonic: SubsonicClient
@@ -75,6 +83,7 @@ export function createApp(deps: AppDeps) {
   app.onError((err, c) => {
     if (err instanceof CommandError) return c.json({ error: err.message }, err.status)
     if (err instanceof PlaylistError) return c.json({ error: err.message }, err.status)
+    if (err instanceof AskError) return c.json({ error: err.message }, err.status)
     if (err instanceof SubsonicError) return c.json({ error: err.message, code: err.code }, 502)
     console.error(err)
     return c.json({ error: err.message || 'Internal error' }, 500)
@@ -106,6 +115,7 @@ export function createApp(deps: AppDeps) {
       name: store.name(),
       needsSetup: live === null,
       auth: { enabled, signedIn: signedInNow ?? signedIn(c) },
+      ask: Boolean(deps.ask),
     }
   }
 
@@ -351,14 +361,68 @@ export function createApp(deps: AppDeps) {
     return c.json({ ok: true })
   })
 
+  // Ask: songs from the library for a request in plain words. Off (404)
+  // unless an Anthropic API key is set.
+  let asking = 0
+  app.post('/api/ask', async (c) => {
+    const ask = deps.ask
+    if (!ask) return c.json({ error: 'Ask is off: no Anthropic API key is set' }, 404)
+    const body = await c.req.json<Partial<AskRequest>>().catch(() => null)
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim() : ''
+    if (!prompt) throw new AskError('Say what you’d like to hear', 400)
+    if (prompt.length > MAX_PROMPT) {
+      throw new AskError(`Keep it to ${MAX_PROMPT} characters or fewer`, 400)
+    }
+    const playing = body?.nowPlaying
+    const nowPlaying =
+      playing && typeof playing.id === 'string' && typeof playing.title === 'string'
+        ? {
+            id: playing.id,
+            title: playing.title.slice(0, 200),
+            artist: playing.artist?.slice(0, 200),
+            album: playing.album?.slice(0, 200),
+          }
+        : undefined
+    if (asking >= MAX_ASKS) throw new AskError('Already picking songs. Try again in a moment.', 429)
+    asking++
+    // One JSON object per line: a { step } for each thing Ask looks at, so
+    // the phone can show progress, then { result } or { error }.
+    c.header('content-type', 'application/x-ndjson; charset=utf-8')
+    c.header('cache-control', 'no-cache')
+    c.header('x-accel-buffering', 'no')
+    const { call } = c.var.live.subsonic
+    return stream(c, async (out) => {
+      const send = (line: AskEvent) => out.write(`${JSON.stringify(line)}\n`).catch(() => {})
+      try {
+        const result = await ask(call, { prompt, nowPlaying }, (step) => void send({ step }))
+        await send({ result })
+      } catch (err) {
+        const known = err instanceof AskError ? err : null
+        if (!known) console.error('juke: ask failed:', err)
+        await send({ error: known?.message ?? 'Ask failed. Try again.' })
+      } finally {
+        asking--
+      }
+    })
+  })
+
   playlistRoutes(app)
 
   app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404))
 
   if (deps.staticDir) {
-    app.use('/*', serveStatic({ root: deps.staticDir }))
+    // Built assets have content hashes in their names, so they can be cached
+    // for good. Everything else (index.html above all) is checked on each
+    // load, or a home-screen app on iOS keeps running an old version.
+    const cacheHeaders = (path: string, c: Context) => {
+      c.header(
+        'cache-control',
+        path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+      )
+    }
+    app.use('/*', serveStatic({ root: deps.staticDir, onFound: cacheHeaders }))
     // Client-side routes live in the hash, so any other path is the app shell.
-    app.get('/*', serveStatic({ root: deps.staticDir, path: 'index.html' }))
+    app.get('/*', serveStatic({ root: deps.staticDir, path: 'index.html', onFound: cacheHeaders }))
   }
 
   return app

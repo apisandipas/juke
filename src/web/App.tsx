@@ -1,14 +1,25 @@
-import { ChevronDown, Library, ListMusic, Pause, Play, Radio, SkipForward } from 'lucide-react'
+import {
+  ChevronDown,
+  Library,
+  ListMusic,
+  Pause,
+  Play,
+  Radio,
+  SkipForward,
+  Sparkles,
+} from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Backdrop } from '@/components/Backdrop'
 import { Cover } from '@/components/Cover'
 import { PageHeader } from '@/components/PageHeader'
+import { AskView } from '@/features/ask/AskView'
 import { AlbumView } from '@/features/library/AlbumView'
 import { ArtistView } from '@/features/library/ArtistView'
 import { LibraryView } from '@/features/library/LibraryView'
 import { PlaylistsView, PlaylistView } from '@/features/playlists/PlaylistsView'
 import { QueueList } from '@/features/queue/QueueList'
 import { RemoteView } from '@/features/remote/RemoteView'
+import { useConfig } from '@/lib/config'
 import { useJukebox, usePosition } from '@/lib/jukebox'
 import { WIDE } from '@/lib/media'
 import { goBack, href, usePagePath, useRoute, type Route } from '@/lib/router'
@@ -72,7 +83,7 @@ function NowPlayingBackdrop({ dim }: { dim: boolean }) {
   return <Backdrop coverId={current?.coverArt} dim={dim} />
 }
 
-type Section = 'remote' | 'library' | 'playlists'
+type Section = 'remote' | 'library' | 'playlists' | 'ask'
 
 function sectionOf(route: Route): Section {
   switch (route.name) {
@@ -83,6 +94,8 @@ function sectionOf(route: Route): Section {
     case 'playlists':
     case 'playlist':
       return 'playlists'
+    case 'ask':
+      return 'ask'
     default:
       return 'remote'
   }
@@ -103,14 +116,19 @@ function Page({ route }: { route: Route }) {
       return <PlaylistsView />
     case 'playlist':
       return <PlaylistView id={route.id} />
+    case 'ask':
+      return <AskView />
   }
 }
 
 function TabBar({ section }: { section: Section }) {
+  const { config } = useConfig()
   const tabs: { id: Section; label: string; icon: typeof Radio; to: string }[] = [
     { id: 'remote', label: 'Remote', icon: Radio, to: href.remote() },
     { id: 'library', label: 'Library', icon: Library, to: href.library() },
     { id: 'playlists', label: 'Playlists', icon: ListMusic, to: href.playlists() },
+    // Only when the person running juke has set an Anthropic API key.
+    ...(config.ask ? [{ id: 'ask' as const, label: 'Ask', icon: Sparkles, to: href.ask() }] : []),
   ]
   return (
     <nav

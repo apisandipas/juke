@@ -11,6 +11,7 @@ export type Route =
   | { name: 'artist'; id: string }
   | { name: 'playlists' }
   | { name: 'playlist'; id: string }
+  | { name: 'ask' }
 
 export function parse(hash: string): Route {
   const [path = '', search = ''] = hash.replace(/^#\/?/, '').split('?')
@@ -28,6 +29,8 @@ export function parse(hash: string): Route {
       }
     case 'playlists':
       return a ? { name: 'playlist', id: a } : { name: 'playlists' }
+    case 'ask':
+      return { name: 'ask' }
     default:
       return { name: 'remote' }
   }
@@ -42,6 +45,7 @@ export const href = {
   artist: (id: string) => `#/library/artist/${encodeURIComponent(id)}`,
   playlists: () => '#/playlists',
   playlist: (id: string) => `#/playlists/${encodeURIComponent(id)}`,
+  ask: () => '#/ask',
 }
 
 function subscribe(onChange: () => void) {

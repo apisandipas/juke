@@ -3,9 +3,10 @@ import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createApp } from '@server/app'
+import { createAsk } from '@server/ask'
 import { createSetupCode } from '@server/auth'
 import { checkConnection } from '@server/checks'
-import { ConfigStore } from '@server/config'
+import { ConfigStore, fromEnv } from '@server/config'
 import { createSubsonicClient } from '@server/subsonic'
 
 // Settings live in JUKE_DATA_DIR. Under systemd, StateDirectory= sets
@@ -20,11 +21,18 @@ const setupCode = settings ? null : createSetupCode()
 const builtWeb = join(dirname(fileURLToPath(import.meta.url)), '..', 'web')
 const staticDir = process.env.JUKE_STATIC_DIR ?? (existsSync(builtWeb) ? builtWeb : undefined)
 
+// Ask is optional and uses the operator's own key; without one it stays off.
+const anthropicKey = fromEnv(process.env, 'ANTHROPIC_API_KEY')
+const ask = anthropicKey
+  ? createAsk({ apiKey: anthropicKey, model: process.env.ANTHROPIC_MODEL })
+  : null
+
 const port = Number(process.env.JUKE_PORT ?? 4600)
 const hostname = process.env.JUKE_HOST ?? '0.0.0.0'
 
-serve({ fetch: createApp({ store, setupCode, staticDir }).fetch, port, hostname }, () => {
+serve({ fetch: createApp({ store, setupCode, staticDir, ask }).fetch, port, hostname }, () => {
   console.log(`juke listening on http://${hostname}:${port}${staticDir ? '' : ' (API only)'}`)
+  console.log(ask ? 'juke: Ask is on' : 'juke: Ask is off (set ANTHROPIC_API_KEY to turn it on)')
   if (setupCode) {
     console.log(
       [

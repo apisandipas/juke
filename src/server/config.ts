@@ -47,7 +47,7 @@ export const ENV_NAMES: Record<SetupField, string> = {
 type Env = Record<string, string | undefined>
 
 /** A value, or the contents of the file named by NAME_FILE, trimmed. */
-function fromEnv(env: Env, name: string): string | undefined {
+export function fromEnv(env: Env, name: string): string | undefined {
   const file = env[`${name}_FILE`]
   if (file) return readFileSync(file, 'utf8').trim() || undefined
   return env[name]?.trim() || undefined

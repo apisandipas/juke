@@ -22,6 +22,12 @@ phone / laptop ──SSE + JSON──▶ juke (Hono, :4600) ──Subsonic jukeb
 - **Library**: search, albums (recently added, played, most played, A–Z, random),
   artists, album pages.
 - **Playlists**: Navidrome playlists, played in full, shuffled, or queued. Make new ones, add songs and albums, save the queue, and rename, reorder or delete the playlists juke's account owns.
+- **This device**: play on the phone or laptop holding juke instead of the jukebox, with
+  lock-screen controls. Move the song, its place and the queue across in either
+  direction. Plays count in Navidrome.
+- **Ask** (optional): describe what you want to hear, such as "rainy Sunday, nothing with
+  vocals", and get songs from your library, each with a reason. Off unless you set an
+  Anthropic API key; see below.
 
 Tapping a song opens its actions rather than playing it, because "play" replaces the
 whole jukebox queue. The `+` on each row is the one-tap path: add to the end.
@@ -66,6 +72,7 @@ services.juke = {
   passwordFile = "/run/secrets/juke-navidrome";
   name = "Living room";
   jukePasswordFile = "/run/secrets/juke-password";
+  anthropicKeyFile = "/run/secrets/juke-anthropic-key";  # turns on Ask
   # port = 4534; navidromeUrl = "http://127.0.0.1:4533";
 };
 networking.firewall.allowedTCPPorts = [ 4534 ];
@@ -86,11 +93,14 @@ compose file or Nix config always takes effect. The form only fills the gaps.
 | `NAVIDROME_PASSWORD`     | That account's password                                |                             |
 | `JUKE_NAME`              | What juke calls the speakers: "Playing on Living room" | `the jukebox`               |
 | `JUKE_PASSWORD`          | Password each device enters once                       | none                        |
+| `ANTHROPIC_API_KEY`      | Turns on Ask, using your own Anthropic account         | none: Ask is off            |
+| `ANTHROPIC_MODEL`        | Claude model Ask uses                                  | `claude-opus-5-5`           |
 | `JUKE_DATA_DIR`          | Where the settings file lives                          | `./data`, `/data` in Docker |
 | `JUKE_PORT`, `JUKE_HOST` | Where juke listens                                     | `4600`, `0.0.0.0`           |
 
-Any of the passwords can instead come from a file: `NAVIDROME_PASSWORD_FILE`,
-`JUKE_PASSWORD_FILE`.
+Any of the secrets can instead come from a file: `NAVIDROME_PASSWORD_FILE`,
+`JUKE_PASSWORD_FILE`, `ANTHROPIC_API_KEY_FILE`. The Anthropic key is only read from
+the environment, never saved by the form.
 
 When `NAVIDROME_USER` and `NAVIDROME_PASSWORD` are both set, juke starts without the
 setup form. When they aren't, it prints a one-time setup code in its log and asks for
@@ -153,6 +163,13 @@ with its dependencies bundled). `node dist/server/main.js` serves both.
 
 After changing dependencies, update `npmDepsHash` in `nix/package.nix` with
 `nix run nixpkgs#prefetch-npm-deps package-lock.json`.
+
+### Ask
+
+Ask sends your request, and the titles, artists, albums, genres and years of the songs
+it looks at, to Anthropic's API, billed to the key you set. Picks come only from songs
+the library returned while answering; anything else is dropped. Answers are only as
+good as the library's tags. At most two asks run at once.
 
 ## Limits
 
