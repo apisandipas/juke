@@ -12,8 +12,21 @@ export class SubsonicError extends Error {
 
 export type Params = Record<string, string | number | boolean | (string | number)[] | undefined>
 
+export interface CallOptions {
+  /**
+   * Send the parameters as a form body instead of in the URL. For writes that
+   * carry many song ids, which can overflow a reverse proxy's URL limit.
+   * Navidrome accepts this (OpenSubsonic formPost).
+   */
+  post?: boolean
+}
+
 /** Calls one Subsonic endpoint and returns the payload inside `subsonic-response`. */
-export type SubsonicCall = (endpoint: string, params?: Params) => Promise<Record<string, unknown>>
+export type SubsonicCall = (
+  endpoint: string,
+  params?: Params,
+  options?: CallOptions,
+) => Promise<Record<string, unknown>>
 
 export interface SubsonicClient {
   call: SubsonicCall
@@ -28,6 +41,13 @@ export function createSubsonicClient(opts: {
   timeoutMs?: number
 }): SubsonicClient {
   const timeoutMs = opts.timeoutMs ?? 10_000
+
+  function append(target: URLSearchParams, params: Params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined) continue
+      for (const v of Array.isArray(value) ? value : [value]) target.append(key, String(v))
+    }
+  }
 
   function url(endpoint: string, params: Params = {}): URL {
     const u = new URL(`/rest/${endpoint}`, opts.baseUrl)
@@ -45,16 +65,23 @@ export function createSubsonicClient(opts: {
     u.searchParams.set('v', '1.16.1')
     u.searchParams.set('c', 'juke')
     u.searchParams.set('f', 'json')
-    for (const [key, value] of Object.entries(params)) {
-      if (value === undefined) continue
-      for (const v of Array.isArray(value) ? value : [value]) u.searchParams.append(key, String(v))
-    }
+    append(u.searchParams, params)
     return u
   }
 
-  async function rawFetch(endpoint: string, params?: Params): Promise<Response> {
+  async function rawFetch(
+    endpoint: string,
+    params?: Params,
+    options: CallOptions = {},
+  ): Promise<Response> {
+    const signal = AbortSignal.timeout(timeoutMs)
     try {
-      return await fetch(url(endpoint, params), { signal: AbortSignal.timeout(timeoutMs) })
+      if (options.post) {
+        const body = new URLSearchParams()
+        append(body, params ?? {})
+        return await fetch(url(endpoint), { method: 'POST', body, signal })
+      }
+      return await fetch(url(endpoint, params), { signal })
     } catch (err) {
       // undici reports every network failure as "fetch failed"; the useful
       // part (ECONNREFUSED, ENOTFOUND, a timeout) is in the cause.
@@ -70,8 +97,8 @@ export function createSubsonicClient(opts: {
     }
   }
 
-  async function call(endpoint: string, params?: Params): Promise<Record<string, unknown>> {
-    const res = await rawFetch(endpoint, params)
+  const call: SubsonicCall = async (endpoint, params, options) => {
+    const res = await rawFetch(endpoint, params, options)
     if (!res.ok) throw new SubsonicError(`Navidrome returned HTTP ${res.status}`, 0)
     const body = (await res.json()) as { 'subsonic-response'?: Record<string, unknown> }
     const payload = body['subsonic-response']
@@ -83,5 +110,5 @@ export function createSubsonicClient(opts: {
     return payload
   }
 
-  return { call, fetch: rawFetch }
+  return { call, fetch: (endpoint, params) => rawFetch(endpoint, params) }
 }
